@@ -74,26 +74,22 @@ class AlertBot(discord.Client):
                 type=discord.ActivityType.watching, name="Hyperliquid"
             )
         )
+        # Older versions copied every global command into each guild, which
+        # made Discord show two of everything once global propagation caught
+        # up. Remove those legacy guild-scoped copies; global commands remain.
         for guild in self.guilds:
-            await self.sync_guild(guild)
+            await self.clear_guild_commands(guild)
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
         log.info("joined %s (%s)", guild.name, guild.id)
-        await self.sync_guild(guild)
 
-    async def sync_guild(self, guild: discord.Guild) -> None:
-        """Copy the commands into one guild so they appear immediately.
-
-        A global sync is the right long-term home for them, but Discord can take
-        up to an hour to push global commands to clients — long enough to look
-        like the bot never came up. A guild sync lands straight away.
-        """
+    async def clear_guild_commands(self, guild: discord.Guild) -> None:
+        """Delete legacy guild copies so only global commands are displayed."""
         try:
-            self.tree.copy_global_to(guild=guild)
-            synced = await self.tree.sync(guild=guild)
-            log.info("synced %d command(s) to %s", len(synced), guild.name)
+            self.tree.clear_commands(guild=guild)
+            await self.tree.sync(guild=guild)
         except discord.DiscordException as exc:
-            log.warning("command sync failed for %s — %s", guild.name, exc)
+            log.warning("command cleanup failed for %s — %s", guild.name, exc)
 
     async def close(self) -> None:
         self.poll.cancel()
@@ -246,12 +242,8 @@ def register_commands(bot: AlertBot) -> None:
             f"Subscribed channel `{channel_id}` in guild `{guild_id}`.", ephemeral=True)
 
     @bot.tree.command(name="unsubscribe", description="Stop alerts in this server")
+    @is_owner()
     async def unsubscribe(interaction: discord.Interaction):
-        if not (interaction.user.id in config.owner_ids
-                or interaction.user.guild_permissions.administrator):
-            await interaction.response.send_message(
-                "You need to be an administrator to use this command.", ephemeral=True)
-            return
         await interaction.response.defer(ephemeral=True)
         await bot.store.unsubscribe(str(interaction.guild_id))
         await interaction.followup.send("This server has been unsubscribed.", ephemeral=True)
@@ -324,6 +316,7 @@ def register_commands(bot: AlertBot) -> None:
         await interaction.response.send_message(url, ephemeral=True)
 
     @bot.tree.command(name="ping", description="Latency check")
+    @is_owner()
     async def ping(interaction: discord.Interaction):
         await interaction.response.send_message(
             f"🏓 {round(bot.latency * 1000)}ms", ephemeral=True)

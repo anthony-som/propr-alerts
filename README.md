@@ -67,7 +67,8 @@ rather say nothing at all about how it went.
 
 ## Commands
 
-Everything except `/ping` is restricted to `OWNER_IDS`.
+Every command is restricted to `OWNER_IDS`. Keep only your Discord user ID in
+that setting if nobody else should be able to run them.
 
 | Command | Purpose |
 |---|---|

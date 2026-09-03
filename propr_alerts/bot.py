@@ -69,6 +69,31 @@ class AlertBot(discord.Client):
 
     async def on_ready(self) -> None:
         log.info("connected as %s, %d guild(s)", self.user, len(self.guilds))
+        await self.change_presence(
+            activity=discord.Activity(
+                type=discord.ActivityType.watching, name="Hyperliquid"
+            )
+        )
+        for guild in self.guilds:
+            await self.sync_guild(guild)
+
+    async def on_guild_join(self, guild: discord.Guild) -> None:
+        log.info("joined %s (%s)", guild.name, guild.id)
+        await self.sync_guild(guild)
+
+    async def sync_guild(self, guild: discord.Guild) -> None:
+        """Copy the commands into one guild so they appear immediately.
+
+        A global sync is the right long-term home for them, but Discord can take
+        up to an hour to push global commands to clients — long enough to look
+        like the bot never came up. A guild sync lands straight away.
+        """
+        try:
+            self.tree.copy_global_to(guild=guild)
+            synced = await self.tree.sync(guild=guild)
+            log.info("synced %d command(s) to %s", len(synced), guild.name)
+        except discord.DiscordException as exc:
+            log.warning("command sync failed for %s — %s", guild.name, exc)
 
     async def close(self) -> None:
         self.poll.cancel()

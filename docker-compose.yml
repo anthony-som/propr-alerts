@@ -1,0 +1,20 @@
+services:
+  alerts:
+    build: .
+    container_name: propr-alerts
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ALERTS_DB: /data/alerts.db
+      # The copier publishes on the host's loopback, which a container cannot
+      # reach — host-gateway maps the host into the container's DNS.
+      COPIER_URL: ${COPIER_URL:-http://host.docker.internal:8080}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

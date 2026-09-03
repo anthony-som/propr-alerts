@@ -219,19 +219,23 @@ def register_commands(bot: AlertBot) -> None:
         else:
             await interaction.response.send_message(message, ephemeral=True)
 
-    @bot.tree.command(name="subscribe", description="Post trade alerts in a channel")
+    @bot.tree.command(name="subscribe", description="Set the alert channel and mention role")
     @is_owner()
-    async def subscribe(interaction: discord.Interaction, channel: discord.TextChannel):
+    async def subscribe(
+        interaction: discord.Interaction,
+        channel: discord.TextChannel,
+        role: Optional[discord.Role] = None,
+    ):
         await interaction.response.defer(ephemeral=True)
-        await bot.store.subscribe(str(interaction.guild_id), channel_id=str(channel.id))
-        await interaction.followup.send(f"Alerts will post in {channel.mention}.", ephemeral=True)
-
-    @bot.tree.command(name="subscribe_role", description="Role to mention on a new setup")
-    @is_owner()
-    async def subscribe_role(interaction: discord.Interaction, role: discord.Role):
-        await interaction.response.defer(ephemeral=True)
-        await bot.store.subscribe(str(interaction.guild_id), role_id=str(role.id))
-        await interaction.followup.send(f"{role.mention} will be mentioned.", ephemeral=True)
+        await bot.store.subscribe(
+            str(interaction.guild_id),
+            channel_id=str(channel.id),
+            role_id=str(role.id) if role else None,
+        )
+        role_text = f" and mention {role.mention}" if role else ""
+        await interaction.followup.send(
+            f"Alerts will post in {channel.mention}{role_text}.", ephemeral=True
+        )
 
     @bot.tree.command(name="subscribe_id", description="Subscribe by guild/channel ID")
     @is_owner()

@@ -72,8 +72,7 @@ that setting if nobody else should be able to run them.
 
 | Command | Purpose |
 |---|---|
-| `/subscribe <channel>` | Post alerts in this channel |
-| `/subscribe_role <role>` | Role to mention on a new setup |
+| `/subscribe <channel> [role]` | Set the alert channel and optional mention role |
 | `/subscribe_id <guild> <channel>` | Subscribe by ID, from anywhere |
 | `/unsubscribe` | Stop alerts here (owner or server admin) |
 | `/admin_unsubscribe <guild_id>` | Remove a server by ID |

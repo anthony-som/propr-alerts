@@ -43,6 +43,10 @@ async def test_every_command_is_owner_only(tmp_path):
         commands = bot.tree.get_commands()
         assert commands
         assert all(command.checks for command in commands)
+        assert bot.tree.get_command("subscribe_role") is None
+        subscribe = bot.tree.get_command("subscribe")
+        assert [parameter.name for parameter in subscribe.parameters] == ["channel", "role"]
+        assert subscribe.parameters[1].required is False
     finally:
         await bot.source.aclose()
 

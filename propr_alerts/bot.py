@@ -15,7 +15,7 @@ from typing import Optional
 
 import discord
 from discord import app_commands
-from discord.ext import commands, tasks
+from discord.ext import tasks
 
 from .config import Config
 from .render import build_embed, update_line
@@ -34,9 +34,18 @@ def alert_key(setup: Setup) -> str:
     return f"{setup.key}@{setup.opened_at or 'seed'}"
 
 
-class AlertBot(commands.Bot):
+class AlertBot(discord.Client):
+    """A plain client with a command tree.
+
+    Not `commands.Bot`: that carries the prefix-command machinery, which needs
+    the privileged message-content intent and warns on every boot without it.
+    This bot only ever posts and answers slash commands, so it asks for nothing
+    privileged.
+    """
+
     def __init__(self, config: Config) -> None:
-        super().__init__(command_prefix=".", intents=discord.Intents.default())
+        super().__init__(intents=discord.Intents.default())
+        self.tree = app_commands.CommandTree(self)
         self.config = config
         self.store = Store(config.database)
         self.source = CopierSource(
@@ -293,6 +302,8 @@ def main() -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
+    # One line per poll would be a line every few seconds, for ever.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     config = Config.from_env()
     missing = config.missing()
     if missing:

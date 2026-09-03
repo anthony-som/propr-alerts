@@ -12,9 +12,15 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./data:/data
+      # A named volume, not a bind mount: the container runs as an unprivileged
+      # user whose uid does not exist on the host, so a host directory would be
+      # unwritable. Nothing here needs reading from the host.
+      - alerts_data:/data
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  alerts_data:

@@ -43,7 +43,7 @@ LONG BTC
 | A new entry rests on the book | the embed above, colour blurple |
 | Entry, stop or target moves | the same message is updated + a reply naming every moved order |
 | Entry fills | *Filled* + `✅ BTC LONG filled at 64,251` |
-| Entry cancelled unfilled | *Cancelled* + `🚫 BTC LONG cancelled before filling` |
+| Entry cancelled unfilled | *Cancelled* + `🚫 Cancelled BTC LONG` |
 | Position closes | *Closed* + `🏁 BTC LONG closed in profit` |
 
 `SHOW_OUTCOME=false` drops the "in profit" / "at a loss" wording if you would

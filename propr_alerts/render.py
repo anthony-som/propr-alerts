@@ -31,10 +31,10 @@ STATUS_LINE = {
     "closed": "🏁 Closed",
 }
 
-FOOTER_TEXT = (
-    "Propr: https://app.propr.xyz/r/RkWBtYVD • "
-    "Hyperliquid: https://app.hyperliquid.xyz/join/QIKO • "
-    "X: @qikoCrypto (https://x.com/qikoCrypto)"
+PROMO_LINE = (
+    "[Follow exactly on Propr](https://app.propr.xyz/r/RkWBtYVD) · "
+    "[Follow exactly on Hyperliquid](https://app.hyperliquid.xyz/join/QIKO) · "
+    "[Follow @qikoCrypto on X](https://x.com/qikoCrypto)"
 )
 
 
@@ -121,6 +121,8 @@ def body(setup: Setup) -> str:
         f"**Stop distance** {stop_distance_pct(setup)}",
         "",
         status_label(setup),
+        "",
+        PROMO_LINE,
     ])
 
 
@@ -135,7 +137,7 @@ def build_embed(setup: Setup, kind: str) -> discord.Embed:
         colour=colour,
         timestamp=datetime.now(timezone.utc),
     )
-    embed.set_footer(text=FOOTER_TEXT)
+    embed.set_footer(text="Levels only • No sizes")
     return embed
 
 
@@ -149,7 +151,7 @@ def update_line(setup: Setup, kind: str, changed: Sequence[str] = ()) -> str:
     if kind == FILLED:
         return "✅ Filled"
     if kind == CANCELLED:
-        return "🚫 Cancelled"
+        return f"🚫 Cancelled {setup.asset} {setup.side.upper()}"
     if kind == CLOSED:
         if setup.outcome:
             return f"🏁 Closed {'in profit' if setup.outcome == 'up' else 'at a loss'}"

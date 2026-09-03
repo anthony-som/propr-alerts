@@ -67,12 +67,16 @@ def test_the_title_is_the_direction_and_ticker_alone():
     assert build_embed(setup, OPENED).title == "SHORT BTC"
 
 
-def test_the_footer_plugs_socials_and_referrals():
+def test_socials_and_referrals_are_clickable_description_links():
     setup = Setup(key="BTC:short", asset="BTC", side="short")
-    footer = build_embed(setup, OPENED).footer.text
-    assert "https://app.propr.xyz/r/RkWBtYVD" in footer
-    assert "https://app.hyperliquid.xyz/join/QIKO" in footer
-    assert "X: @qikoCrypto (https://x.com/qikoCrypto)" in footer
+    embed = build_embed(setup, OPENED)
+    assert "[Follow exactly on Propr](https://app.propr.xyz/r/RkWBtYVD)" in embed.description
+    assert (
+        "[Follow exactly on Hyperliquid](https://app.hyperliquid.xyz/join/QIKO)"
+        in embed.description
+    )
+    assert "[Follow @qikoCrypto on X](https://x.com/qikoCrypto)" in embed.description
+    assert embed.footer.text == "Levels only • No sizes"
 
 
 def test_the_body_carries_entry_stop_target_then_status():
@@ -87,7 +91,7 @@ def test_the_body_carries_entry_stop_target_then_status():
     assert lines[2] == "**Target** 61,800"
     assert lines[3] == "**Risk** 1%"
     assert lines[4] == "**Stop distance** 1.5%"
-    assert lines[-1] == "⏳ Working"
+    assert lines[6] == "⏳ Working"
 
 
 def test_a_missing_level_renders_as_a_dash_not_none():
@@ -121,16 +125,14 @@ def test_a_closed_trade_says_direction_only():
 
 
 # ------------------------------------------------------------- replies
-def test_a_reply_never_restates_the_order():
-    """It hangs off the embed, which already says what the trade is."""
+def test_a_cancelled_reply_names_the_asset_and_direction():
     setup = Setup(
         key="BTC:long", asset="BTC", side="long", state="cancelled",
         entry_type="limit", entry_price="64250.5", stop="63100", target="66800",
     )
-    assert update_line(setup, CANCELLED) == "🚫 Cancelled"
+    assert update_line(setup, CANCELLED) == "🚫 Cancelled BTC LONG"
     assert update_line(setup, FILLED) == "✅ Filled"
-    for line in (update_line(setup, CANCELLED), update_line(setup, FILLED)):
-        assert "BTC" not in line and "64" not in line
+    assert "64" not in update_line(setup, CANCELLED)
 
 
 def test_a_moved_stop_says_only_the_new_level():

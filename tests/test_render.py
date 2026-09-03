@@ -34,7 +34,6 @@ def rendered(alerts):
         embed = build_embed(alert.setup, alert.kind)
         out.append(embed.title or "")
         out.append(embed.description or "")
-        out += [f"{f.name} {f.value}" for f in embed.fields]
         out.append((embed.footer.text or "") if embed.footer else "")
         out.append(update_line(alert.setup, alert.kind))
     return "\n".join(out)
@@ -61,23 +60,44 @@ def test_prices_and_levels_do_reach_discord():
     assert "LONG" in text
 
 
-def test_a_setup_renders_every_field_a_reader_needs():
+def test_the_title_is_the_direction_and_ticker_alone():
+    setup = Setup(key="BTC:short", asset="BTC", side="short")
+    assert build_embed(setup, OPENED).title == "SHORT BTC"
+
+
+def test_the_body_carries_entry_stop_target_then_status():
     setup = Setup(
         key="BTC:short", asset="BTC", side="short", state="working",
         entry_type="limit", entry_price="64250.5", stop="65100", target="61800",
     )
-    embed = build_embed(setup, OPENED)
-    names = [f.name for f in embed.fields]
-    assert names == ["Entry", "Stop", "Target", "Status"]
-    assert "SHORT" in embed.title and "BTC" in embed.title
-    assert "Working" in embed.fields[3].value
+    lines = build_embed(setup, OPENED).description.splitlines()
+    assert lines[0] == "**Entry** 64,250.5 (limit)"
+    assert lines[1] == "**Stop** 65,100"
+    assert lines[2] == "**Target** 61,800"
+    assert lines[-1] == "⏳ Working"
 
 
 def test_a_missing_level_renders_as_a_dash_not_none():
     setup = Setup(key="SOL:long", asset="SOL", side="long", entry_type="market")
-    embed = build_embed(setup, FILLED)
-    assert embed.fields[1].value == "—"
-    assert embed.fields[2].value == "—"
+    lines = build_embed(setup, FILLED).description.splitlines()
+    assert lines[1] == "**Stop** —"
+    assert lines[2] == "**Target** —"
+
+
+def test_a_filled_setup_shows_the_fill_price_as_the_entry():
+    setup = Setup(
+        key="BTC:long", asset="BTC", side="long", state="filled",
+        entry_type="limit", entry_price="64250.5", fill_price="64251",
+    )
+    body = build_embed(setup, FILLED).description
+    assert "**Entry** 64,251 (filled)" in body
+    assert "✅ Filled" in body
+
+
+def test_a_closed_setup_says_how_it_ended_without_a_figure():
+    setup = Setup(key="BTC:long", asset="BTC", side="long", state="closed", outcome="up")
+    body = build_embed(setup, CLOSED).description
+    assert "🏁 Closed in profit" in body
 
 
 def test_a_closed_trade_says_direction_only():

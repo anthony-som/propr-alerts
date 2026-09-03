@@ -13,8 +13,6 @@ import discord
 
 from .tracker import CANCELLED, CLOSED, FILLED, LEVELS, OPENED, Setup
 
-LONG, SHORT = "long", "short"
-
 COLOURS = {
     OPENED: 0x5865F2,     # blurple — a setup is posted, nothing has happened
     LEVELS: 0x5865F2,
@@ -31,17 +29,9 @@ STATUS_LINE = {
     "closed": "🏁 Closed",
 }
 
-HEADLINE = {
-    OPENED: "New setup",
-    LEVELS: "Levels updated",
-    FILLED: "Entry filled",
-    CANCELLED: "Setup cancelled",
-    CLOSED: "Position closed",
-}
-
-
-def direction(setup: Setup) -> str:
-    return "🟩 LONG" if setup.side == LONG else "🟥 SHORT"
+def title(setup: Setup) -> str:
+    """`LONG BTC` — direction and ticker, nothing else."""
+    return f"{setup.side.upper()} {setup.asset}"
 
 
 def _price(value: str | None) -> str:
@@ -73,22 +63,33 @@ def status_label(setup: Setup) -> str:
     return label
 
 
+def body(setup: Setup) -> str:
+    """The three levels, then where the trade stands.
+
+    Written as lines rather than embed fields: fields sit side by side and wrap
+    badly on a phone, and the levels are what a reader is scanning for.
+    """
+    return "\n".join([
+        f"**Entry** {entry_label(setup)}",
+        f"**Stop** {_price(setup.stop)}",
+        f"**Target** {_price(setup.target)}",
+        "",
+        status_label(setup),
+    ])
+
+
 def build_embed(setup: Setup, kind: str) -> discord.Embed:
     colour = COLOURS.get(kind, 0x5865F2)
     if kind == CLOSED and setup.outcome:
         colour = CLOSED_COLOURS.get(setup.outcome, colour)
 
     embed = discord.Embed(
-        title=f"{direction(setup)}  {setup.asset}",
-        description=HEADLINE.get(kind, ""),
+        title=title(setup),
+        description=body(setup),
         colour=colour,
         timestamp=datetime.now(timezone.utc),
     )
-    embed.add_field(name="Entry", value=entry_label(setup), inline=True)
-    embed.add_field(name="Stop", value=_price(setup.stop), inline=True)
-    embed.add_field(name="Target", value=_price(setup.target), inline=True)
-    embed.add_field(name="Status", value=status_label(setup), inline=False)
-    embed.set_footer(text="propr alerts · levels only, no sizes")
+    embed.set_footer(text="levels only, no sizes")
     return embed
 
 

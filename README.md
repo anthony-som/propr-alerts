@@ -23,12 +23,22 @@ cannot place, cancel or modify anything.
 
 ## What gets posted
 
-One message per idea, edited in place as it progresses, with a short follow-up
-line on each transition so an edit is never missed:
+One embed per idea, edited in place as it progresses, with a short follow-up
+line on each transition so an edit is never missed. The title is the direction
+and ticker; the body is the levels:
+
+```
+LONG BTC
+**Entry** 64,250.5 (limit)
+**Stop** 63,100
+**Target** 66,800
+
+⏳ Working
+```
 
 | Event | What you see |
 |---|---|
-| A new entry rests on the book | 🟩 **LONG BTC** — entry, stop, target, *Working* |
+| A new entry rests on the book | the embed above, colour blurple |
 | Stop or target moves | the same message, updated levels |
 | Entry fills | *Filled* + `✅ BTC LONG filled at 64,251` |
 | Entry cancelled unfilled | *Cancelled* + `🚫 BTC LONG cancelled before filling` |

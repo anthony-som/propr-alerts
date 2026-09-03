@@ -8,6 +8,8 @@ in a book stuffed with sizes and asserts none of them reach the output.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from typing import Sequence
 
 import discord
 
@@ -32,6 +34,15 @@ STATUS_LINE = {
 def title(setup: Setup) -> str:
     """`LONG BTC` — direction and ticker, nothing else."""
     return f"{setup.side.upper()} {setup.asset}"
+
+
+def _decimal(value: str | None) -> Decimal | None:
+    if not value:
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
 
 
 def _price(value: str | None) -> str:
@@ -63,6 +74,24 @@ def status_label(setup: Setup) -> str:
     return label
 
 
+def risk_pct(setup: Setup) -> str:
+    """How far the stop sits from the entry, as a percentage of the entry.
+
+    Rounded to the nearest half percent, because the exact figure is noise: a
+    stop 1.79% away and one 1.83% away are the same trade. Anything under a
+    quarter percent would round to nothing, so it reads as `<0.5%` instead.
+    """
+    base = _decimal(setup.fill_price or setup.entry_price)
+    stop = _decimal(setup.stop)
+    if base is None or stop is None or base == 0:
+        return "—"
+    pct = abs(base - stop) / base * 100
+    rounded = (pct * 2).quantize(Decimal("1"), rounding=ROUND_HALF_UP) / 2
+    if rounded == 0:
+        return "<0.5%"
+    return f"{rounded.normalize():f}%"
+
+
 def body(setup: Setup) -> str:
     """The three levels, then where the trade stands.
 
@@ -73,6 +102,7 @@ def body(setup: Setup) -> str:
         f"**Entry** {entry_label(setup)}",
         f"**Stop** {_price(setup.stop)}",
         f"**Target** {_price(setup.target)}",
+        f"**Risk** {risk_pct(setup)}",
         "",
         status_label(setup),
     ])
@@ -93,21 +123,26 @@ def build_embed(setup: Setup, kind: str) -> discord.Embed:
     return embed
 
 
-def update_line(setup: Setup, kind: str) -> str:
-    """The short follow-up posted under a setup, so an edit is never missed."""
-    head = f"**{setup.asset} {setup.side.upper()}**"
+def update_line(setup: Setup, kind: str, changed: Sequence[str] = ()) -> str:
+    """The short follow-up posted under a setup, so an edit is never missed.
+
+    It is a reply to the original embed, which already carries the ticker,
+    direction and levels — so this says only what changed, and never restates
+    the order.
+    """
     if kind == FILLED:
-        return f"✅ {head} filled at {_price(setup.fill_price)}"
+        return "✅ Filled"
     if kind == CANCELLED:
-        return f"🚫 {head} cancelled before filling"
+        return "🚫 Cancelled"
     if kind == CLOSED:
-        tail = ""
         if setup.outcome:
-            tail = " in profit" if setup.outcome == "up" else " at a loss"
-        return f"🏁 {head} closed{tail}"
+            return f"🏁 Closed {'in profit' if setup.outcome == 'up' else 'at a loss'}"
+        return "🏁 Closed"
     if kind == LEVELS:
-        return (
-            f"✏️ {head} levels updated — stop {_price(setup.stop)}, "
-            f"target {_price(setup.target)}"
-        )
-    return f"{head} updated"
+        moves = []
+        if "stop" in changed:
+            moves.append(f"Stop → {_price(setup.stop)}")
+        if "target" in changed:
+            moves.append(f"Target → {_price(setup.target)}")
+        return "✏️ " + (" · ".join(moves) if moves else "Levels updated")
+    return "Updated"

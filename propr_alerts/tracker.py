@@ -82,6 +82,8 @@ class Setup:
 class Alert:
     kind: str
     setup: Setup
+    # For a LEVELS alert, which of stop/target actually moved.
+    changed: List[str] = field(default_factory=list)
 
 
 class Tracker:
@@ -185,7 +187,7 @@ class Tracker:
             moved = self._apply_levels(setup, stops.get(key), targets.get(key))
             if moved and not seed and key not in fresh:
                 setup.updated_at = now
-                alerts.append(Alert(LEVELS, setup))
+                alerts.append(Alert(LEVELS, setup, changed=moved))
 
             if setup.state == "working" and key in live_positions:
                 setup.state = "filled"
@@ -233,21 +235,21 @@ class Tracker:
 
     def _apply_levels(
         self, setup: Setup, stop: Optional[dict], target: Optional[dict]
-    ) -> bool:
-        """Attach stop/target levels, reporting whether either actually moved.
+    ) -> List[str]:
+        """Attach stop/target levels, naming whichever actually moved.
 
         Levels are kept once seen: when a position closes the exchange cancels
         the survivor, and dropping it would blank the alert at the exact moment
         someone reads it.
         """
-        changed = False
+        changed: List[str] = []
         for order, attribute in ((stop, "stop"), (target, "target")):
             if order is None:
                 continue
             level = _fmt(order.get("triggerPrice") or order.get("price"))
             if level and level != getattr(setup, attribute):
                 setattr(setup, attribute, level)
-                changed = True
+                changed.append(attribute)
         return changed
 
     def note_outcome(self, setup: Setup, unrealized) -> None:

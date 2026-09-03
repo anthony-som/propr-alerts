@@ -21,7 +21,7 @@ from .config import Config
 from .render import build_embed, update_line
 from .source import CopierSource, SourceError
 from .store import Store
-from .tracker import CANCELLED, CLOSED, FILLED, OPENED, Alert, Setup, Tracker
+from .tracker import CANCELLED, CLOSED, FILLED, LEVELS, OPENED, Alert, Setup, Tracker
 
 log = logging.getLogger("propr-alerts")
 
@@ -143,8 +143,13 @@ class AlertBot(discord.Client):
             await self.broadcast_new(key, embed, mention=True)
         else:
             await self.edit_all(key, known, embed)
-            if kind in (FILLED, CANCELLED, CLOSED):
-                await self.broadcast_followup(known, update_line(setup, kind))
+            # Every transition gets a reply, moved levels included — an edit on
+            # its own is silent, and a moved stop is exactly what a follower
+            # needs to see.
+            if kind in (FILLED, CANCELLED, CLOSED, LEVELS):
+                await self.broadcast_followup(
+                    known, update_line(setup, kind, alert.changed)
+                )
 
         if kind in TERMINAL:
             await self.store.forget_messages(key)

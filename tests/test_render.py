@@ -4,8 +4,10 @@ A book is fed through the tracker with sizes, leverage and a PnL figure on it,
 every resulting alert is rendered, and the rendered text is searched for those
 numbers. Any of them surfacing is the bug this file exists to catch.
 """
-from propr_alerts.render import build_embed, update_line
-from propr_alerts.tracker import CLOSED, FILLED, OPENED, Setup, Tracker
+from propr_alerts.render import build_embed, risk_pct, update_line
+from propr_alerts.tracker import (
+    CANCELLED, CLOSED, FILLED, LEVELS, OPENED, Setup, Tracker,
+)
 
 MONEY = ("0.37", "23750", "9814.7", "184.2", "184.20", "12.5")
 
@@ -74,6 +76,7 @@ def test_the_body_carries_entry_stop_target_then_status():
     assert lines[0] == "**Entry** 64,250.5 (limit)"
     assert lines[1] == "**Stop** 65,100"
     assert lines[2] == "**Target** 61,800"
+    assert lines[3] == "**Risk** 1.5%"
     assert lines[-1] == "⏳ Working"
 
 
@@ -105,3 +108,47 @@ def test_a_closed_trade_says_direction_only():
     line = update_line(setup, CLOSED)
     assert "at a loss" in line
     assert not any(character.isdigit() for character in line)
+
+
+# ------------------------------------------------------------- replies
+def test_a_reply_never_restates_the_order():
+    """It hangs off the embed, which already says what the trade is."""
+    setup = Setup(
+        key="BTC:long", asset="BTC", side="long", state="cancelled",
+        entry_type="limit", entry_price="64250.5", stop="63100", target="66800",
+    )
+    assert update_line(setup, CANCELLED) == "🚫 Cancelled"
+    assert update_line(setup, FILLED) == "✅ Filled"
+    for line in (update_line(setup, CANCELLED), update_line(setup, FILLED)):
+        assert "BTC" not in line and "64" not in line
+
+
+def test_a_moved_stop_says_only_the_new_level():
+    setup = Setup(key="BTC:long", asset="BTC", side="long", stop="63500", target="66800")
+    assert update_line(setup, LEVELS, ["stop"]) == "✏️ Stop → 63,500"
+    assert update_line(setup, LEVELS, ["target"]) == "✏️ Target → 66,800"
+    assert update_line(setup, LEVELS, ["stop", "target"]) == (
+        "✏️ Stop → 63,500 · Target → 66,800"
+    )
+
+
+# ---------------------------------------------------------------- risk
+def test_risk_is_the_stop_distance_rounded_to_a_half_percent():
+    def risk(entry, stop):
+        return risk_pct(Setup(key="k", asset="BTC", side="long",
+                              entry_price=entry, stop=stop))
+
+    assert risk("64250.5", "63100") == "1.5%"     # 1.79% -> 1.5 (nearest half)
+    assert risk("100", "99") == "1%"              # exactly 1
+    assert risk("100", "98.6") == "1.5%"          # 1.4  -> 1.5
+    assert risk("100", "98") == "2%"              # exactly 2
+    assert risk("100", "102") == "2%"             # a short: distance, not sign
+    assert risk("100", "99.9") == "<0.5%"         # too tight to round to a half
+    assert risk("100", None) == "—"               # no stop, no risk to state
+    assert risk(None, "99") == "—"
+
+
+def test_risk_is_measured_from_the_fill_once_filled():
+    setup = Setup(key="k", asset="BTC", side="long", state="filled",
+                  entry_price="100", fill_price="102", stop="99.96")
+    assert risk_pct(setup) == "2%"

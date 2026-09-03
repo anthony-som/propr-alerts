@@ -33,12 +33,13 @@ LONG BTC
 **Stop** 63,100
 **Target** 66,800
 **Risk** 1%
-**Stop distance** 2%
 
 ⏳ Working
 
-[Follow exactly on Propr](https://app.propr.xyz/r/RkWBtYVD) · [Follow exactly on Hyperliquid](https://app.hyperliquid.xyz/join/QIKO) · [Follow @qikoCrypto on X](https://x.com/qikoCrypto)
-Affiliated with [Nefarious.Trading](https://discord.gg/CPcvAdtF98)
+[Save fees on Hyperliquid](https://app.hyperliquid.xyz/join/QIKO)
+[5% off challenges on Propr](https://app.propr.xyz/r/RkWBtYVD)
+
+Follow @qikoCrypto on X • Affiliated with Nefarious.Trading
 ```
 
 | Event | What you see |

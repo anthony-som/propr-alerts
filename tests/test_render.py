@@ -4,7 +4,7 @@ A book is fed through the tracker with sizes, leverage and a PnL figure on it,
 every resulting alert is rendered, and the rendered text is searched for those
 numbers. Any of them surfacing is the bug this file exists to catch.
 """
-from propr_alerts.render import build_embed, risk_pct, stop_distance_pct, update_line
+from propr_alerts.render import build_embed, risk_pct, update_line
 from propr_alerts.tracker import (
     CANCELLED, CLOSED, FILLED, LEVELS, OPENED, Setup, Tracker,
 )
@@ -70,18 +70,18 @@ def test_the_title_is_the_direction_and_ticker_alone():
 def test_socials_and_referrals_are_clickable_description_links():
     setup = Setup(key="BTC:short", asset="BTC", side="short")
     embed = build_embed(setup, OPENED)
-    assert "[Follow exactly on Propr](https://app.propr.xyz/r/RkWBtYVD)" in embed.description
     assert (
-        "[Follow exactly on Hyperliquid](https://app.hyperliquid.xyz/join/QIKO)"
+        "[Save fees on Hyperliquid](https://app.hyperliquid.xyz/join/QIKO)\n"
+        "[5% off challenges on Propr](https://app.propr.xyz/r/RkWBtYVD)"
         in embed.description
     )
-    assert "[Follow @qikoCrypto on X](https://x.com/qikoCrypto)" in embed.description
-    assert (
-        "Affiliated with [Nefarious.Trading](https://discord.gg/CPcvAdtF98)"
-        in embed.description
+    assert embed.footer.text == (
+        "Follow @qikoCrypto on X • Affiliated with Nefarious.Trading"
     )
-    assert embed.footer.text == "@qikoCrypto"
-    assert embed.footer.icon_url == "https://unavatar.io/x/qikoCrypto"
+    assert embed.footer.icon_url == (
+        "https://pbs.twimg.com/profile_images/2081911345276923904/"
+        "BQGsxBQE_400x400.jpg"
+    )
 
 
 def test_the_body_carries_entry_stop_target_then_status():
@@ -95,8 +95,7 @@ def test_the_body_carries_entry_stop_target_then_status():
     assert lines[1] == "**Stop** 65,100"
     assert lines[2] == "**Target** 61,800"
     assert lines[3] == "**Risk** 1%"
-    assert lines[4] == "**Stop distance** 1.5%"
-    assert lines[6] == "⏳ Working"
+    assert lines[5] == "⏳ Working"
 
 
 def test_a_missing_level_renders_as_a_dash_not_none():
@@ -155,27 +154,6 @@ def test_a_moved_entry_is_in_the_update_line():
 
 
 # ---------------------------------------------------------------- risk
-def test_stop_distance_is_rounded_to_a_half_percent():
-    def risk(entry, stop):
-        return stop_distance_pct(Setup(key="k", asset="BTC", side="long",
-                                       entry_price=entry, stop=stop))
-
-    assert risk("64250.5", "63100") == "2%"       # 1.79% -> 2 (nearest half)
-    assert risk("100", "99") == "1%"              # exactly 1
-    assert risk("100", "98.6") == "1.5%"          # 1.4  -> 1.5
-    assert risk("100", "98") == "2%"              # exactly 2
-    assert risk("100", "102") == "2%"             # a short: distance, not sign
-    assert risk("100", "99.9") == "<0.5%"         # too tight to round to a half
-    assert risk("100", None) == "—"               # no stop, no risk to state
-    assert risk(None, "99") == "—"
-
-
-def test_stop_distance_is_measured_from_the_fill_once_filled():
-    setup = Setup(key="k", asset="BTC", side="long", state="filled",
-                  entry_price="100", fill_price="102", stop="99.96")
-    assert stop_distance_pct(setup) == "2%"
-
-
 def test_risk_is_the_copiers_follower_percentage():
     setup = Setup(key="k", asset="BTC", side="long", risk_pct="1.00")
     assert risk_pct(setup) == "1%"

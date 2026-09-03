@@ -8,7 +8,7 @@ in a book stuffed with sizes and asserts none of them reach the output.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation
 from typing import Sequence
 
 import discord
@@ -31,15 +31,17 @@ STATUS_LINE = {
     "closed": "🏁 Closed",
 }
 
-PROMO_LINE = (
-    "[Follow exactly on Propr](https://app.propr.xyz/r/RkWBtYVD) · "
-    "[Follow exactly on Hyperliquid](https://app.hyperliquid.xyz/join/QIKO) · "
-    "[Follow @qikoCrypto on X](https://x.com/qikoCrypto)"
+PROMO_LINES = (
+    "[Save fees on Hyperliquid](https://app.hyperliquid.xyz/join/QIKO)\n"
+    "[5% off challenges on Propr](https://app.propr.xyz/r/RkWBtYVD)"
 )
-AFFILIATE_LINE = (
-    "Affiliated with [Nefarious.Trading](https://discord.gg/CPcvAdtF98)"
+FOOTER_TEXT = (
+    "Follow @qikoCrypto on X • Affiliated with Nefarious.Trading"
 )
-PROFILE_IMAGE_URL = "https://unavatar.io/x/qikoCrypto"
+PROFILE_IMAGE_URL = (
+    "https://pbs.twimg.com/profile_images/2081911345276923904/"
+    "BQGsxBQE_400x400.jpg"
+)
 
 
 def title(setup: Setup) -> str:
@@ -85,24 +87,6 @@ def status_label(setup: Setup) -> str:
     return label
 
 
-def stop_distance_pct(setup: Setup) -> str:
-    """How far the stop sits from the entry, as a percentage of the entry.
-
-    Rounded to the nearest half percent, because the exact figure is noise: a
-    stop 1.79% away and one 1.83% away are the same trade. Anything under a
-    quarter percent would round to nothing, so it reads as `<0.5%` instead.
-    """
-    base = _decimal(setup.fill_price or setup.entry_price)
-    stop = _decimal(setup.stop)
-    if base is None or stop is None or base == 0:
-        return "—"
-    pct = abs(base - stop) / base * 100
-    rounded = (pct * 2).quantize(Decimal("1"), rounding=ROUND_HALF_UP) / 2
-    if rounded == 0:
-        return "<0.5%"
-    return f"{rounded.normalize():f}%"
-
-
 def risk_pct(setup: Setup) -> str:
     """Configured account risk after the leader-to-follower remap."""
     value = _decimal(setup.risk_pct)
@@ -122,12 +106,10 @@ def body(setup: Setup) -> str:
         f"**Stop** {_price(setup.stop)}",
         f"**Target** {_price(setup.target)}",
         f"**Risk** {risk_pct(setup)}",
-        f"**Stop distance** {stop_distance_pct(setup)}",
         "",
         status_label(setup),
         "",
-        PROMO_LINE,
-        AFFILIATE_LINE,
+        PROMO_LINES,
     ])
 
 
@@ -142,7 +124,7 @@ def build_embed(setup: Setup, kind: str) -> discord.Embed:
         colour=colour,
         timestamp=datetime.now(timezone.utc),
     )
-    embed.set_footer(text="@qikoCrypto", icon_url=PROFILE_IMAGE_URL)
+    embed.set_footer(text=FOOTER_TEXT, icon_url=PROFILE_IMAGE_URL)
     return embed
 
 

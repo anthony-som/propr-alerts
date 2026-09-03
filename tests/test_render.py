@@ -6,7 +6,7 @@ numbers. Any of them surfacing is the bug this file exists to catch.
 """
 from propr_alerts.render import build_embed, risk_pct, update_line
 from propr_alerts.tracker import (
-    CANCELLED, CLOSED, FILLED, LEVELS, OPENED, Setup, Tracker,
+    ADDED, CANCELLED, CLOSED, FILLED, LEVELS, OPENED, TRIMMED, Setup, Tracker,
 )
 
 MONEY = ("0.37", "23750", "9814.7", "184.2", "184.20", "12.5")
@@ -157,3 +157,56 @@ def test_a_moved_entry_is_in_the_update_line():
 def test_risk_is_the_copiers_follower_percentage():
     setup = Setup(key="k", asset="BTC", side="long", risk_pct="1.00")
     assert risk_pct(setup) == "1%"
+
+
+def test_a_trim_reports_a_share_and_never_the_size():
+    """The figure on a partial close is a percentage of the position."""
+    order, stop, position = book_with_money()
+    half = dict(position, quantity="0.185")
+    tracker = Tracker()
+    text = rendered(tracker.step([order, stop], []))
+    text += rendered(tracker.step([stop], [position]))
+    text += rendered(tracker.step([stop], [half]))
+    alerts = tracker.step([stop], [half])
+
+    assert [a.kind for a in alerts] == [TRIMMED]
+    line = update_line(alerts[0].setup, alerts[0].kind, pct=alerts[0].pct)
+    assert line == "✂️ Trimmed 50%"
+    assert "50% closed" in build_embed(alerts[0].setup, TRIMMED).description
+
+    text += line
+    for figure in MONEY + ("0.185",):
+        assert figure not in text, f"{figure} leaked into the alert"
+
+
+def test_a_later_trim_says_how_much_of_the_position_is_off():
+    setup = Setup(key="BTC:long", asset="BTC", side="long", state="filled",
+                  closed_pct="75")
+    assert update_line(setup, TRIMMED, pct="50") == (
+        "✂️ Trimmed 50% · 75% of the position closed"
+    )
+
+
+def test_an_add_reports_the_new_average_entry():
+    setup = Setup(key="BTC:long", asset="BTC", side="long", state="filled",
+                  fill_price="63800")
+    assert update_line(setup, ADDED) == "➕ Added · avg entry 63,800"
+
+
+def test_a_removed_order_is_marked_as_a_warning_not_an_edit():
+    setup = Setup(key="BTC:long", asset="BTC", side="long", state="filled",
+                  target="66800")
+    assert update_line(setup, LEVELS, ["stop_gone"]) == "⚠️ Stop removed"
+    assert update_line(setup, LEVELS, ["stop_gone", "target_gone"]) == (
+        "⚠️ Stop removed · Target removed"
+    )
+    # A move alongside a removal still reads as the warning.
+    assert update_line(setup, LEVELS, ["target", "stop_gone"]) == (
+        "⚠️ Target → 66,800 · Stop removed"
+    )
+
+
+def test_a_pulled_stop_stops_being_shown_in_the_embed():
+    setup = Setup(key="BTC:long", asset="BTC", side="long", state="filled",
+                  stop=None, target="66800")
+    assert "**Stop** —" in build_embed(setup, LEVELS).description

@@ -4,8 +4,8 @@ The subscription half is the quantum bot's model, trimmed to one feed: a guild
 subscribes one channel, optionally names a role to mention, and owner-only
 slash commands manage the list. The trading half is new — every few seconds the
 leader's book is diffed and the resulting alerts are posted, then *edited in
-place* as the setup fills, cancels or closes, so a channel shows one message per
-idea rather than a stack of fragments.
+place* as the setup fills, is trimmed or added to, cancels or closes, so a
+channel shows one message per idea rather than a stack of fragments.
 """
 from __future__ import annotations
 
@@ -21,7 +21,10 @@ from .config import Config
 from .render import build_embed, update_line
 from .source import CopierSource, SourceError
 from .store import Store
-from .tracker import CANCELLED, CLOSED, FILLED, LEVELS, OPENED, Alert, Setup, Tracker
+from .tracker import (
+    ADDED, CANCELLED, CLOSED, FILLED, LEVELS, OPENED, TRIMMED,
+    Alert, Setup, Tracker,
+)
 
 log = logging.getLogger("propr-alerts")
 
@@ -148,9 +151,9 @@ class AlertBot(discord.Client):
             # Every transition gets a reply, moved levels included — an edit on
             # its own is silent, and a moved stop is exactly what a follower
             # needs to see.
-            if kind in (FILLED, CANCELLED, CLOSED, LEVELS):
+            if kind in (FILLED, CANCELLED, CLOSED, LEVELS, TRIMMED, ADDED):
                 await self.broadcast_followup(
-                    known, update_line(setup, kind, alert.changed)
+                    known, update_line(setup, kind, alert.changed, alert.pct)
                 )
 
         if kind in TERMINAL:
@@ -293,7 +296,11 @@ def register_commands(bot: AlertBot) -> None:
         ]
         if live:
             lines.append("")
-            lines += [f"• {s.asset} {s.side} — {s.state}" for s in live]
+            lines += [
+                f"• {s.asset} {s.side} — {s.state}"
+                + (f" ({s.closed_pct}% closed)" if s.closed_pct else "")
+                for s in live
+            ]
         await interaction.followup.send("\n".join(lines), ephemeral=True)
 
     @bot.tree.command(name="preview", description="Post a sample alert here")

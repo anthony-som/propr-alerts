@@ -76,7 +76,12 @@ def test_socials_and_referrals_are_clickable_description_links():
         in embed.description
     )
     assert "[Follow @qikoCrypto on X](https://x.com/qikoCrypto)" in embed.description
-    assert embed.footer.text == "Levels only • No sizes"
+    assert (
+        "Affiliated with [Nefarious.Trading](https://discord.gg/CPcvAdtF98)"
+        in embed.description
+    )
+    assert embed.footer.text == "@qikoCrypto"
+    assert embed.footer.icon_url == "https://unavatar.io/x/qikoCrypto"
 
 
 def test_the_body_carries_entry_stop_target_then_status():

@@ -36,6 +36,10 @@ PROMO_LINE = (
     "[Follow exactly on Hyperliquid](https://app.hyperliquid.xyz/join/QIKO) · "
     "[Follow @qikoCrypto on X](https://x.com/qikoCrypto)"
 )
+AFFILIATE_LINE = (
+    "Affiliated with [Nefarious.Trading](https://discord.gg/CPcvAdtF98)"
+)
+PROFILE_IMAGE_URL = "https://unavatar.io/x/qikoCrypto"
 
 
 def title(setup: Setup) -> str:
@@ -123,6 +127,7 @@ def body(setup: Setup) -> str:
         status_label(setup),
         "",
         PROMO_LINE,
+        AFFILIATE_LINE,
     ])
 
 
@@ -137,7 +142,7 @@ def build_embed(setup: Setup, kind: str) -> discord.Embed:
         colour=colour,
         timestamp=datetime.now(timezone.utc),
     )
-    embed.set_footer(text="Levels only • No sizes")
+    embed.set_footer(text="@qikoCrypto", icon_url=PROFILE_IMAGE_URL)
     return embed
 
 

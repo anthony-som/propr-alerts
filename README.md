@@ -36,6 +36,9 @@ LONG BTC
 **Stop distance** 2%
 
 ⏳ Working
+
+[Follow exactly on Propr](https://app.propr.xyz/r/RkWBtYVD) · [Follow exactly on Hyperliquid](https://app.hyperliquid.xyz/join/QIKO) · [Follow @qikoCrypto on X](https://x.com/qikoCrypto)
+Affiliated with [Nefarious.Trading](https://discord.gg/CPcvAdtF98)
 ```
 
 | Event | What you see |

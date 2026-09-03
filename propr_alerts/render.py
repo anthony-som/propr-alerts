@@ -31,6 +31,13 @@ STATUS_LINE = {
     "closed": "🏁 Closed",
 }
 
+FOOTER_TEXT = (
+    "Propr: https://app.propr.xyz/r/RkWBtYVD • "
+    "Hyperliquid: https://app.hyperliquid.xyz/join/QIKO • "
+    "X: @qikoCrypto (https://x.com/qikoCrypto)"
+)
+
+
 def title(setup: Setup) -> str:
     """`LONG BTC` — direction and ticker, nothing else."""
     return f"{setup.side.upper()} {setup.asset}"
@@ -74,7 +81,7 @@ def status_label(setup: Setup) -> str:
     return label
 
 
-def risk_pct(setup: Setup) -> str:
+def stop_distance_pct(setup: Setup) -> str:
     """How far the stop sits from the entry, as a percentage of the entry.
 
     Rounded to the nearest half percent, because the exact figure is noise: a
@@ -92,6 +99,14 @@ def risk_pct(setup: Setup) -> str:
     return f"{rounded.normalize():f}%"
 
 
+def risk_pct(setup: Setup) -> str:
+    """Configured account risk after the leader-to-follower remap."""
+    value = _decimal(setup.risk_pct)
+    if value is None:
+        return "—"
+    return f"{value.normalize():f}%"
+
+
 def body(setup: Setup) -> str:
     """The three levels, then where the trade stands.
 
@@ -103,6 +118,7 @@ def body(setup: Setup) -> str:
         f"**Stop** {_price(setup.stop)}",
         f"**Target** {_price(setup.target)}",
         f"**Risk** {risk_pct(setup)}",
+        f"**Stop distance** {stop_distance_pct(setup)}",
         "",
         status_label(setup),
     ])
@@ -119,7 +135,7 @@ def build_embed(setup: Setup, kind: str) -> discord.Embed:
         colour=colour,
         timestamp=datetime.now(timezone.utc),
     )
-    embed.set_footer(text="levels only, no sizes")
+    embed.set_footer(text=FOOTER_TEXT)
     return embed
 
 
@@ -140,6 +156,8 @@ def update_line(setup: Setup, kind: str, changed: Sequence[str] = ()) -> str:
         return "🏁 Closed"
     if kind == LEVELS:
         moves = []
+        if "entry" in changed:
+            moves.append(f"Entry → {_price(setup.entry_price)}")
         if "stop" in changed:
             moves.append(f"Stop → {_price(setup.stop)}")
         if "target" in changed:

@@ -4,9 +4,9 @@ A Discord bot that announces **your Hyperliquid trades** — ticker, direction,
 entry, stop and target — and keeps each alert up to date as the setup fills,
 cancels or closes.
 
-**No sizes, ever.** No quantity, no notional, no balance, no PnL figure. That is
-enforced structurally, not by care: alerts are rendered from a `Setup`, which
-has no money on it, and `tests/test_render.py` pushes a book full of sizes
+**No sizes, ever.** No quantity, no notional, no balance, no PnL figure. Alerts
+only retain the configured public risk percentage (the copier's follower side
+of the risk remap), and `tests/test_render.py` pushes a book full of sizes
 through the whole pipeline and fails if any of them reach the output.
 
 ## How it gets your trades
@@ -32,6 +32,8 @@ LONG BTC
 **Entry** 64,250.5 (limit)
 **Stop** 63,100
 **Target** 66,800
+**Risk** 1%
+**Stop distance** 2%
 
 ⏳ Working
 ```
@@ -39,7 +41,7 @@ LONG BTC
 | Event | What you see |
 |---|---|
 | A new entry rests on the book | the embed above, colour blurple |
-| Stop or target moves | the same message, updated levels |
+| Entry, stop or target moves | the same message is updated + a reply naming every moved order |
 | Entry fills | *Filled* + `✅ BTC LONG filled at 64,251` |
 | Entry cancelled unfilled | *Cancelled* + `🚫 BTC LONG cancelled before filling` |
 | Position closes | *Closed* + `🏁 BTC LONG closed in profit` |

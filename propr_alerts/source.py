@@ -23,6 +23,8 @@ class SourceError(RuntimeError):
 class Book:
     orders: List[dict]
     positions: List[dict]
+    # The public signal risk after the copier's leader -> follower remap.
+    risk_pct: Optional[str] = None
 
 
 class CopierSource:
@@ -64,10 +66,32 @@ class CopierSource:
 
         payload = response.json()
         leader = payload.get("leader") or {}
+        risk_pct = await self._alert_risk_pct()
         return Book(
             orders=list(leader.get("orders") or []),
             positions=list(leader.get("positions") or []),
+            risk_pct=risk_pct,
         )
+
+    async def _alert_risk_pct(self) -> Optional[str]:
+        """Read the configured risk remap without exposing account budgets.
+
+        The copier uses e.g. 10% on the small leader account to represent 1%
+        on the follower. Its state endpoint is the source of truth for that
+        mapping, so alerts stay aligned if the configuration changes.
+        """
+        try:
+            response = await self._client.get("/api/state")
+            if response.status_code != 200:
+                return None
+            status = (response.json() or {}).get("status") or {}
+            risk = status.get("risk") or {}
+            if not risk.get("enabled"):
+                return None
+            value = risk.get("followerPct")
+            return str(value) if value not in (None, "") else None
+        except (httpx.HTTPError, ValueError, TypeError):
+            return None
 
     async def leader_label(self) -> Optional[str]:
         """Which account is being watched, for `/status`."""

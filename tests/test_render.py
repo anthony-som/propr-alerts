@@ -4,7 +4,7 @@ A book is fed through the tracker with sizes, leverage and a PnL figure on it,
 every resulting alert is rendered, and the rendered text is searched for those
 numbers. Any of them surfacing is the bug this file exists to catch.
 """
-from propr_alerts.render import build_embed, risk_pct, update_line
+from propr_alerts.render import build_embed, risk_pct, stop_distance_pct, update_line
 from propr_alerts.tracker import (
     CANCELLED, CLOSED, FILLED, LEVELS, OPENED, Setup, Tracker,
 )
@@ -67,16 +67,26 @@ def test_the_title_is_the_direction_and_ticker_alone():
     assert build_embed(setup, OPENED).title == "SHORT BTC"
 
 
+def test_the_footer_plugs_socials_and_referrals():
+    setup = Setup(key="BTC:short", asset="BTC", side="short")
+    footer = build_embed(setup, OPENED).footer.text
+    assert "https://app.propr.xyz/r/RkWBtYVD" in footer
+    assert "https://app.hyperliquid.xyz/join/QIKO" in footer
+    assert "X: @qikoCrypto (https://x.com/qikoCrypto)" in footer
+
+
 def test_the_body_carries_entry_stop_target_then_status():
     setup = Setup(
         key="BTC:short", asset="BTC", side="short", state="working",
         entry_type="limit", entry_price="64250.5", stop="65100", target="61800",
+        risk_pct="1",
     )
     lines = build_embed(setup, OPENED).description.splitlines()
     assert lines[0] == "**Entry** 64,250.5 (limit)"
     assert lines[1] == "**Stop** 65,100"
     assert lines[2] == "**Target** 61,800"
-    assert lines[3] == "**Risk** 1.5%"
+    assert lines[3] == "**Risk** 1%"
+    assert lines[4] == "**Stop distance** 1.5%"
     assert lines[-1] == "⏳ Working"
 
 
@@ -132,13 +142,18 @@ def test_a_moved_stop_says_only_the_new_level():
     )
 
 
-# ---------------------------------------------------------------- risk
-def test_risk_is_the_stop_distance_rounded_to_a_half_percent():
-    def risk(entry, stop):
-        return risk_pct(Setup(key="k", asset="BTC", side="long",
-                              entry_price=entry, stop=stop))
+def test_a_moved_entry_is_in_the_update_line():
+    setup = Setup(key="BTC:long", asset="BTC", side="long", entry_price="64000")
+    assert update_line(setup, LEVELS, ["entry"]) == "✏️ Entry → 64,000"
 
-    assert risk("64250.5", "63100") == "1.5%"     # 1.79% -> 1.5 (nearest half)
+
+# ---------------------------------------------------------------- risk
+def test_stop_distance_is_rounded_to_a_half_percent():
+    def risk(entry, stop):
+        return stop_distance_pct(Setup(key="k", asset="BTC", side="long",
+                                       entry_price=entry, stop=stop))
+
+    assert risk("64250.5", "63100") == "2%"       # 1.79% -> 2 (nearest half)
     assert risk("100", "99") == "1%"              # exactly 1
     assert risk("100", "98.6") == "1.5%"          # 1.4  -> 1.5
     assert risk("100", "98") == "2%"              # exactly 2
@@ -148,7 +163,12 @@ def test_risk_is_the_stop_distance_rounded_to_a_half_percent():
     assert risk(None, "99") == "—"
 
 
-def test_risk_is_measured_from_the_fill_once_filled():
+def test_stop_distance_is_measured_from_the_fill_once_filled():
     setup = Setup(key="k", asset="BTC", side="long", state="filled",
                   entry_price="100", fill_price="102", stop="99.96")
-    assert risk_pct(setup) == "2%"
+    assert stop_distance_pct(setup) == "2%"
+
+
+def test_risk_is_the_copiers_follower_percentage():
+    setup = Setup(key="k", asset="BTC", side="long", risk_pct="1.00")
+    assert risk_pct(setup) == "1%"

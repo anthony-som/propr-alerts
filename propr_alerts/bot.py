@@ -117,7 +117,13 @@ class AlertBot(discord.Client):
         now = discord.utils.utcnow().isoformat(timespec="seconds")
         self.last_tick = now
         seed = not self.tracker.seeded and not self.config.seed_alerts
-        alerts = self.tracker.step(book.orders, book.positions, now=now, seed=seed)
+        alerts = self.tracker.step(
+            book.orders,
+            book.positions,
+            now=now,
+            seed=seed,
+            risk_pct=book.risk_pct,
+        )
 
         for alert in alerts:
             try:
@@ -183,25 +189,20 @@ class AlertBot(discord.Client):
                 log.warning("guild %s: edit failed — %s", guild_id, exc)
 
     async def broadcast_followup(self, known, line: str) -> None:
-        """A short line under the setup, because an edit alone is silent."""
-        for _guild_id, channel_id, message_id in known:
+        """Reply to each original setup, because an edit alone is silent."""
+        for guild_id, channel_id, message_id in known:
             channel = self.get_channel(int(channel_id))
             if channel is None:
                 continue
-            reference = None
             try:
-                reference = await channel.fetch_message(int(message_id))
-            except discord.DiscordException:
-                pass
-            try:
-                await channel.send(
+                original = await channel.fetch_message(int(message_id))
+                await original.reply(
                     line,
-                    reference=reference,
                     mention_author=False,
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
             except discord.DiscordException as exc:
-                log.warning("follow-up failed — %s", exc)
+                log.warning("guild %s: follow-up failed — %s", guild_id, exc)
 
 
 # --------------------------------------------------------------- commands

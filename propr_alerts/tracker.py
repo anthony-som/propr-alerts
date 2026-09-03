@@ -5,9 +5,9 @@ only has to diff one tick against the last:
 
     working orders + open positions  ->  opened / levels / filled / cancelled / closed
 
-Deliberately pure. It performs no I/O, holds no Discord state, and knows
-nothing about money — sizes and PnL enter here only as the private signals that
-decide *whether* an event happened, and never leave in an event.
+Deliberately pure. It performs no I/O and holds no Discord state. Quantities,
+balances and PnL never leave it; the only account-level figure retained on a
+setup is the configured public risk percentage.
 """
 from __future__ import annotations
 
@@ -68,6 +68,7 @@ class Setup:
     fill_price: Optional[str] = None
     stop: Optional[str] = None
     target: Optional[str] = None
+    risk_pct: Optional[str] = None
     outcome: str = ""              # up | down | "" — direction only, never a figure
     entry_ids: List[str] = field(default_factory=list)
     opened_at: str = ""
@@ -123,6 +124,7 @@ class Tracker:
         positions: Iterable[dict],
         now: str = "",
         seed: bool = False,
+        risk_pct: Optional[str] = None,
     ) -> List[Alert]:
         """Fold one snapshot in and return the alerts it produced.
 
@@ -168,7 +170,9 @@ class Tracker:
         for key in sorted(seen):
             setup = self.setups.get(key)
             if setup is None:
-                setup = self._new_setup(key, entries.get(key), live_positions.get(key), now)
+                setup = self._new_setup(
+                    key, entries.get(key), live_positions.get(key), now, risk_pct
+                )
                 self.setups[key] = setup
                 fresh.add(key)
                 if not seed:
@@ -178,13 +182,20 @@ class Tracker:
             elif not setup.live:
                 # The same asset and side coming back is a new idea, not the
                 # old one reopening.
-                setup = self._new_setup(key, entries.get(key), live_positions.get(key), now)
+                setup = self._new_setup(
+                    key, entries.get(key), live_positions.get(key), now, risk_pct
+                )
                 self.setups[key] = setup
                 fresh.add(key)
                 if not seed:
                     alerts.append(Alert(FILLED if setup.state == "filled" else OPENED, setup))
 
-            moved = self._apply_levels(setup, stops.get(key), targets.get(key))
+            if risk_pct is not None:
+                setup.risk_pct = _fmt(risk_pct)
+
+            moved = self._apply_levels(
+                setup, entries.get(key), stops.get(key), targets.get(key)
+            )
             if moved and not seed and key not in fresh:
                 setup.updated_at = now
                 alerts.append(Alert(LEVELS, setup, changed=moved))
@@ -217,7 +228,12 @@ class Tracker:
 
     # ------------------------------------------------------------ helpers
     def _new_setup(
-        self, key: str, entries: Optional[List[dict]], position: Optional[dict], now: str
+        self,
+        key: str,
+        entries: Optional[List[dict]],
+        position: Optional[dict],
+        now: str,
+        risk_pct: Optional[str],
     ) -> Setup:
         asset, _, side = key.partition(":")
         first = (entries or [{}])[0]
@@ -225,6 +241,7 @@ class Tracker:
             key=key, asset=asset, side=side,
             entry_type=first.get("type", "") or ("market" if position else ""),
             entry_price=_fmt(first.get("price")),
+            risk_pct=_fmt(risk_pct),
             opened_at=now, updated_at=now,
         )
         setup.entry_ids = [o.get("orderId") for o in (entries or []) if o.get("orderId")]
@@ -234,15 +251,29 @@ class Tracker:
         return setup
 
     def _apply_levels(
-        self, setup: Setup, stop: Optional[dict], target: Optional[dict]
+        self,
+        setup: Setup,
+        entries: Optional[List[dict]],
+        stop: Optional[dict],
+        target: Optional[dict],
     ) -> List[str]:
-        """Attach stop/target levels, naming whichever actually moved.
+        """Attach order levels, naming whichever actually moved.
 
         Levels are kept once seen: when a position closes the exchange cancels
         the survivor, and dropping it would blank the alert at the exact moment
         someone reads it.
         """
         changed: List[str] = []
+        if setup.state == "working" and entries:
+            entry = entries[0]
+            level = _fmt(entry.get("price"))
+            if level and setup.entry_price is not None and level != setup.entry_price:
+                setup.entry_price = level
+                setup.entry_type = entry.get("type", "") or setup.entry_type
+                changed.append("entry")
+            setup.entry_ids = [
+                order.get("orderId") for order in entries if order.get("orderId")
+            ]
         for order, attribute in ((stop, "stop"), (target, "target")):
             if order is None:
                 continue

@@ -73,6 +73,31 @@ def test_moving_a_stop_reports_levels():
     assert alerts[0].setup.stop == "63500"
 
 
+def test_moving_entry_stop_and_target_reports_every_changed_order():
+    tracker = Tracker()
+    tracker.step([entry(), stop(), take_profit()], [])
+    alerts = tracker.step([
+        entry(price="64500"),
+        stop(triggerPrice="63500"),
+        take_profit(triggerPrice="67000"),
+    ], [])
+    assert kinds(alerts) == [LEVELS]
+    assert alerts[0].changed == ["entry", "stop", "target"]
+    assert alerts[0].setup.entry_price == "64500"
+    assert alerts[0].setup.stop == "63500"
+    assert alerts[0].setup.target == "67000"
+
+
+def test_configured_follower_risk_is_carried_by_the_setup():
+    tracker = Tracker()
+    alerts = tracker.step([entry(), stop()], [], risk_pct="1")
+    assert alerts[0].setup.risk_pct == "1"
+
+    revived = Tracker()
+    revived.load(tracker.dump())
+    assert revived.setups["BTC:long"].risk_pct == "1"
+
+
 def test_a_fill_is_the_entry_going_away_while_a_position_appears():
     tracker = Tracker()
     tracker.step([entry(), stop()], [])

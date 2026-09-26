@@ -31,9 +31,9 @@ STATUS_LINE = {
     "closed": "🏁 Closed",
 }
 
+PROPR_LINE = "[5% off challenges on Propr](https://app.propr.xyz/r/RkWBtYVD)"
 PROMO_LINES = (
-    "[Save fees on Hyperliquid](https://app.hyperliquid.xyz/join/QIKO)\n"
-    "[5% off challenges on Propr](https://app.propr.xyz/r/RkWBtYVD)"
+    "[Save fees on Hyperliquid](https://app.hyperliquid.xyz/join/QIKO)\n" + PROPR_LINE
 )
 FOOTER_TEXT = (
     "Follow @qikoCrypto on X • Affiliated with Nefarious.Trading"
@@ -45,8 +45,9 @@ PROFILE_IMAGE_URL = (
 
 
 def title(setup: Setup) -> str:
-    """`LONG BTC` — direction and ticker, nothing else."""
-    return f"{setup.side.upper()} {setup.asset}"
+    """`LONG BTC` — direction and ticker, plus the venue when it isn't Hyperliquid."""
+    text = f"{setup.side.upper()} {setup.asset}"
+    return f"{text} · {setup.venue}" if setup.venue else text
 
 
 def _decimal(value: str | None) -> Decimal | None:
@@ -109,7 +110,7 @@ def body(setup: Setup) -> str:
         "",
         status_label(setup),
         "",
-        PROMO_LINES,
+        PROPR_LINE if setup.venue else PROMO_LINES,
     ])
 
 

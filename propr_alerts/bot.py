@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
+from dataclasses import dataclass
+from typing import Optional, Union
 
 import discord
 from discord import app_commands
@@ -19,7 +20,7 @@ from discord.ext import tasks
 
 from .config import Config
 from .render import build_embed, update_line
-from .source import CopierSource, SourceError
+from .source import CopierSource, MexcSource, SourceError
 from .store import Store
 from .tracker import CANCELLED, CLOSED, FILLED, LEVELS, OPENED, Alert, Setup, Tracker
 
@@ -31,7 +32,20 @@ TERMINAL = {CANCELLED, CLOSED}
 
 def alert_key(setup: Setup) -> str:
     """Stable per *idea*: the same asset and side later is a new message."""
-    return f"{setup.key}@{setup.opened_at or 'seed'}"
+    key = f"{setup.key}@{setup.opened_at or 'seed'}"
+    return f"{setup.venue}:{key}" if setup.venue else key
+
+
+@dataclass
+class Feed:
+    """One account being watched: where its book comes from, and its diff."""
+
+    name: str
+    state_key: str
+    source: Union[CopierSource, MexcSource]
+    tracker: Tracker
+    last_error: Optional[str] = None
+    last_tick: Optional[str] = None
 
 
 class AlertBot(discord.Client):
@@ -48,20 +62,26 @@ class AlertBot(discord.Client):
         self.tree = app_commands.CommandTree(self)
         self.config = config
         self.store = Store(config.database)
-        self.source = CopierSource(
-            config.copier_url, config.copier_user, config.copier_password
-        )
-        self.tracker = Tracker(show_outcome=config.show_outcome)
-        self.last_error: Optional[str] = None
-        self.last_tick: Optional[str] = None
+        self.feeds = [Feed(
+            "Hyperliquid", STATE_KEY,
+            CopierSource(config.copier_url, config.copier_user, config.copier_password),
+            Tracker(show_outcome=config.show_outcome),
+        )]
+        if config.mexc_api_key:
+            self.feeds.append(Feed(
+                "MEXC", f"{STATE_KEY}:mexc",
+                MexcSource(config.mexc_api_key, config.mexc_api_secret, config.mexc_risk_pct),
+                Tracker(show_outcome=config.show_outcome, venue="MEXC"),
+            ))
         self.alerts_sent = 0
 
     # ------------------------------------------------------------ lifecycle
     async def setup_hook(self) -> None:
         await self.store.setup()
-        saved = await self.store.get(STATE_KEY)
-        if saved:
-            self.tracker.load(saved)
+        for feed in self.feeds:
+            saved = await self.store.get(feed.state_key)
+            if saved:
+                feed.tracker.load(saved)
         register_commands(self)
         await self.tree.sync()
         self.poll.change_interval(seconds=self.config.poll_seconds)
@@ -71,7 +91,7 @@ class AlertBot(discord.Client):
         log.info("connected as %s, %d guild(s)", self.user, len(self.guilds))
         await self.change_presence(
             activity=discord.Activity(
-                type=discord.ActivityType.watching, name="Hyperliquid"
+                type=discord.ActivityType.watching, name=" + ".join(feed.name for feed in self.feeds)
             )
         )
         # Older versions copied every global command into each guild, which
@@ -93,27 +113,32 @@ class AlertBot(discord.Client):
 
     async def close(self) -> None:
         self.poll.cancel()
-        await self.source.aclose()
+        for feed in self.feeds:
+            await feed.source.aclose()
         await super().close()
 
     # ----------------------------------------------------------- poll loop
     @tasks.loop(seconds=3.0)
     async def poll(self) -> None:
+        for feed in self.feeds:
+            await self.poll_feed(feed)
+
+    async def poll_feed(self, feed: Feed) -> None:
         try:
-            book = await self.source.leader_book()
+            book = await feed.source.leader_book()
         except SourceError as exc:
-            # Never invent alerts from a failed read: an unreachable copier is
+            # Never invent alerts from a failed read: an unreachable source is
             # not an empty book.
-            if str(exc) != self.last_error:
-                log.warning("source: %s", exc)
-            self.last_error = str(exc)
+            if str(exc) != feed.last_error:
+                log.warning("%s source: %s", feed.name, exc)
+            feed.last_error = str(exc)
             return
 
-        self.last_error = None
+        feed.last_error = None
         now = discord.utils.utcnow().isoformat(timespec="seconds")
-        self.last_tick = now
-        seed = not self.tracker.seeded and not self.config.seed_alerts
-        alerts = self.tracker.step(
+        feed.last_tick = now
+        seed = not feed.tracker.seeded and not self.config.seed_alerts
+        alerts = feed.tracker.step(
             book.orders,
             book.positions,
             now=now,
@@ -128,7 +153,7 @@ class AlertBot(discord.Client):
                 log.exception("publishing %s failed", alert.setup.key)
 
         if alerts or seed:
-            await self.store.put(STATE_KEY, self.tracker.dump())
+            await self.store.put(feed.state_key, feed.tracker.dump())
 
     @poll.before_loop
     async def _before_poll(self) -> None:
@@ -282,18 +307,20 @@ def register_commands(bot: AlertBot) -> None:
     @is_owner()
     async def status(interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        healthy = await bot.source.healthy()
-        live = [s for s in bot.tracker.setups.values() if s.live]
-        lines = [
-            f"copier: {'🟢 reachable' if healthy else '🔴 unreachable'} ({config.copier_url})",
-            f"last read: {bot.last_tick or 'never'}",
-            f"last error: {bot.last_error or 'none'}",
-            f"live setups: {len(live)}",
-            f"alerts sent: {bot.alerts_sent}",
-        ]
-        if live:
-            lines.append("")
+        lines = []
+        for feed in bot.feeds:
+            healthy = await feed.source.healthy()
+            live = [s for s in feed.tracker.setups.values() if s.live]
+            lines += [
+                f"**{feed.name}**: {'🟢 reachable' if healthy else '🔴 unreachable'}"
+                f" ({feed.source.base_url})",
+                f"last read: {feed.last_tick or 'never'}",
+                f"last error: {feed.last_error or 'none'}",
+                f"live setups: {len(live)}",
+            ]
             lines += [f"• {s.asset} {s.side} — {s.state}" for s in live]
+            lines.append("")
+        lines.append(f"alerts sent: {bot.alerts_sent}")
         await interaction.followup.send("\n".join(lines), ephemeral=True)
 
     @bot.tree.command(name="preview", description="Post a sample alert here")

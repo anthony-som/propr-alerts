@@ -34,6 +34,11 @@ class Config:
     copier_user: str = "propr"
     copier_password: str = ""
 
+    # Optional second feed: a MEXC futures account, read with a read-only key.
+    mexc_api_key: str = ""
+    mexc_api_secret: str = ""
+    mexc_risk_pct: str = ""
+
     database: Path = Path("data/alerts.db")
     poll_seconds: float = 3.0
 
@@ -54,6 +59,9 @@ class Config:
             copier_password=os.getenv(
                 "COPIER_PASSWORD", os.getenv("UI_PASSWORD", "")
             ).strip(),
+            mexc_api_key=os.getenv("MEXC_API_KEY", "").strip(),
+            mexc_api_secret=os.getenv("MEXC_API_SECRET", "").strip(),
+            mexc_risk_pct=os.getenv("MEXC_RISK_PCT", "").strip(),
             database=Path(os.getenv("ALERTS_DB", "data/alerts.db")),
             poll_seconds=float(os.getenv("POLL_SECONDS", "3")),
             seed_alerts=os.getenv("SEED_ALERTS", "").lower() in ("1", "true", "yes"),
@@ -67,4 +75,6 @@ class Config:
             gaps.append("DISCORD_TOKEN")
         if not self.owner_ids:
             gaps.append("OWNER_IDS")
+        if bool(self.mexc_api_key) != bool(self.mexc_api_secret):
+            gaps.append("MEXC_API_KEY and MEXC_API_SECRET (both or neither)")
         return gaps

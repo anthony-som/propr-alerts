@@ -70,6 +70,7 @@ class Setup:
     target: Optional[str] = None
     risk_pct: Optional[str] = None
     outcome: str = ""              # up | down | "" — direction only, never a figure
+    venue: str = ""                # "" is the copier's Hyperliquid leader
     entry_ids: List[str] = field(default_factory=list)
     opened_at: str = ""
     updated_at: str = ""
@@ -90,7 +91,8 @@ class Alert:
 class Tracker:
     """Holds the last seen book and reports what changed since."""
 
-    def __init__(self, show_outcome: bool = True) -> None:
+    def __init__(self, show_outcome: bool = True, venue: str = "") -> None:
+        self.venue = venue
         self.setups: Dict[str, Setup] = {}
         self.show_outcome = show_outcome
         self.seeded = False
@@ -241,7 +243,7 @@ class Tracker:
             key=key, asset=asset, side=side,
             entry_type=first.get("type", "") or ("market" if position else ""),
             entry_price=_fmt(first.get("price")),
-            risk_pct=_fmt(risk_pct),
+            risk_pct=_fmt(risk_pct), venue=self.venue,
             opened_at=now, updated_at=now,
         )
         setup.entry_ids = [o.get("orderId") for o in (entries or []) if o.get("orderId")]

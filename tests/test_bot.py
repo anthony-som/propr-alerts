@@ -48,7 +48,8 @@ async def test_every_command_is_owner_only(tmp_path):
         assert [parameter.name for parameter in subscribe.parameters] == ["channel", "role"]
         assert subscribe.parameters[1].required is False
     finally:
-        await bot.source.aclose()
+        for feed in bot.feeds:
+            await feed.source.aclose()
 
 
 async def test_legacy_guild_commands_are_cleared():

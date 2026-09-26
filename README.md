@@ -21,6 +21,14 @@ The copier's *leader* is your Hyperliquid account, already normalised into one
 order shape by its venue adapter. This bot holds no exchange credentials and
 cannot place, cancel or modify anything.
 
+### MEXC
+
+Set `MEXC_API_KEY` / `MEXC_API_SECRET` (a futures key with **read-only**
+permission) and a second feed polls your MEXC futures account directly, since
+the copier has no MEXC adapter. Its alerts go to the same channels, titled
+`LONG BTC · MEXC`, and use `MEXC_RISK_PCT` for the risk line. Limit/market
+entries, TP/SL on orders or positions, and trigger (plan) orders are all read.
+
 ## What gets posted
 
 One embed per idea, edited in place as it progresses, with a short follow-up

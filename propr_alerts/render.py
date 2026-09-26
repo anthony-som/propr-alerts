@@ -7,6 +7,7 @@ in a book stuffed with sizes and asserts none of them reach the output.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Sequence
@@ -27,6 +28,9 @@ COLOURS = {
     CLOSED: 0x95A5A6,
 }
 CLOSED_COLOURS = {"up": 0x2ECC71, "down": 0xED4245}
+# A hand-written post is not a trade transition, so it gets a colour of its
+# own rather than borrowing one that means something on an alert.
+ANNOUNCEMENT_COLOUR = 0xF1C40F
 
 STATUS_LINE = {
     "working": "⏳ Working",
@@ -179,3 +183,44 @@ def update_line(setup: Setup, kind: str, changed: Sequence[str] = (), pct: str =
         mark = "⚠️" if any(c.endswith("_gone") for c in changed) else "✏️"
         return f"{mark} " + (" · ".join(moves) if moves else "Levels updated")
     return "Updated"
+
+
+def attachment_name(filename: str | None) -> str:
+    """A filename an `attachment://` URL can actually reference.
+
+    Discord pairs the embed image with the upload by exact filename, and a
+    space or a quote in it breaks the pairing silently — the embed renders
+    with a blank image rather than an error. Anything unusual becomes an
+    underscore.
+    """
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]", "_", (filename or "").strip())
+    return cleaned or "image.png"
+
+
+def announcement_embed(
+    text: str = "",
+    heading: str = "",
+    image_filename: str = "",
+    promo: bool = True,
+) -> discord.Embed:
+    """A post you wrote yourself, in the frame the alerts use.
+
+    The no-money rule is a property of `Setup`, which has no figures in it to
+    leak. Nothing here reads one: this is the deliberate exception, for a PnL
+    card or a chart you have decided to publish, and every figure in it is one
+    you typed or drew.
+    """
+    parts = [text] if text else []
+    if promo:
+        parts += ["", PROMO_LINES] if text else [PROMO_LINES]
+
+    embed = discord.Embed(
+        title=heading or None,
+        description="\n".join(parts) or None,
+        colour=ANNOUNCEMENT_COLOUR,
+        timestamp=datetime.now(timezone.utc),
+    )
+    if image_filename:
+        embed.set_image(url=f"attachment://{image_filename}")
+    embed.set_footer(text=FOOTER_TEXT, icon_url=PROFILE_IMAGE_URL)
+    return embed

@@ -4,7 +4,10 @@ A book is fed through the tracker with sizes, leverage and a PnL figure on it,
 every resulting alert is rendered, and the rendered text is searched for those
 numbers. Any of them surfacing is the bug this file exists to catch.
 """
-from propr_alerts.render import build_embed, risk_pct, update_line
+from propr_alerts.render import (
+    FOOTER_TEXT, PROMO_LINES, announcement_embed, attachment_name, build_embed,
+    risk_pct, update_line,
+)
 from propr_alerts.tracker import (
     ADDED, CANCELLED, CLOSED, FILLED, LEVELS, OPENED, TRIMMED, Setup, Tracker,
 )
@@ -210,3 +213,34 @@ def test_a_pulled_stop_stops_being_shown_in_the_embed():
     setup = Setup(key="BTC:long", asset="BTC", side="long", state="filled",
                   stop=None, target="66800")
     assert "**Stop** —" in build_embed(setup, LEVELS).description
+
+
+# ---------------------------------------------------------- manual posts
+# The no-money rule guards the *alert* path, which renders a Setup and so has
+# no figures in reach. A manual post is the deliberate exception: it carries
+# whatever the owner typed, which is the point of it.
+
+def test_a_manual_post_carries_the_text_and_the_branding():
+    embed = announcement_embed(text="August: +18R", heading="Monthly PnL")
+
+    assert embed.title == "Monthly PnL"
+    assert "August: +18R" in embed.description
+    assert "app.propr.xyz" in embed.description          # promo lines survive
+    assert embed.footer.text == FOOTER_TEXT
+
+
+def test_an_image_only_post_still_gets_the_promo_lines():
+    embed = announcement_embed(image_filename="equity.png")
+
+    assert embed.description == PROMO_LINES
+    assert embed.image.url == "attachment://equity.png"
+
+
+def test_promo_can_be_dropped():
+    assert announcement_embed(text="just this", promo=False).description == "just this"
+
+
+def test_an_awkward_filename_cannot_break_the_attachment_url():
+    assert attachment_name("Aug PnL (final).png") == "Aug_PnL__final_.png"
+    assert attachment_name(None) == "image.png"
+    assert attachment_name("   ") == "image.png"

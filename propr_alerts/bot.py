@@ -10,15 +10,16 @@ channel shows one message per idea rather than a stack of fragments.
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
-from typing import Optional
+from typing import List, NamedTuple, Optional, Tuple
 
 import discord
 from discord import app_commands
 from discord.ext import tasks
 
 from .config import Config
-from .render import build_embed, update_line
+from .render import announcement_embed, attachment_name, build_embed, update_line
 from .source import CopierSource, SourceError
 from .store import Store
 from .tracker import (
@@ -35,6 +36,28 @@ TERMINAL = {CANCELLED, CLOSED}
 def alert_key(setup: Setup) -> str:
     """Stable per *idea*: the same asset and side later is a new message."""
     return f"{setup.key}@{setup.opened_at or 'seed'}"
+
+
+class Upload(NamedTuple):
+    """An attachment held in memory, ready to be sent more than once."""
+    name: str
+    data: bytes
+    is_image: bool
+
+
+async def load_upload(attachment: discord.Attachment) -> Upload:
+    """Read an upload once, up front.
+
+    A `discord.File` wraps a stream that is spent by the first `send`, so the
+    same File cannot be handed to a second channel — only the first server
+    would get the chart. Holding the bytes lets each channel get its own File.
+    """
+    content_type = attachment.content_type or ""
+    return Upload(
+        name=attachment_name(attachment.filename),
+        data=await attachment.read(),
+        is_image=content_type.startswith("image/"),
+    )
 
 
 class AlertBot(discord.Client):
@@ -176,6 +199,70 @@ class AlertBot(discord.Client):
                 key, guild_id, str(channel.id), str(sent.id)
             )
 
+    async def broadcast_manual(
+        self,
+        text: str = "",
+        heading: str = "",
+        upload: Optional[Upload] = None,
+        mention: bool = False,
+        plain: bool = False,
+    ) -> Tuple[int, List[str]]:
+        """Post something you wrote to every subscribed channel.
+
+        The alert path builds its own message out of a `Setup`; this one
+        carries whatever you hand it — a PnL card, a chart, a note — through
+        the same fan-out, so a manual post lands in the same channels wearing
+        the same branding. Nothing is remembered afterwards: there is no setup
+        for it to belong to, so it is never edited or replied to later.
+
+        Returns how many channels took it, and the guilds that did not.
+        """
+        sent, failed = 0, []
+        for guild_id, details in (await self.store.subscriptions()).items():
+            channel = self.get_channel(int(details["channel"]))
+            if channel is None:
+                log.warning("guild %s: channel %s not visible", guild_id, details["channel"])
+                failed.append(guild_id)
+                continue
+
+            lines = []
+            if mention and details.get("role"):
+                lines.append(f"<@&{details['role']}>")
+            if plain:
+                if heading:
+                    lines.append(f"**{heading}**")
+                if text:
+                    lines.append(text)
+
+            kwargs: dict = {
+                # A role ping is the one mention a manual post may make; an
+                # @everyone typed into the message body must not go through.
+                "allowed_mentions": discord.AllowedMentions(
+                    everyone=False, users=False, roles=mention
+                ),
+            }
+            if lines:
+                kwargs["content"] = "\n".join(lines)
+            if upload:
+                kwargs["file"] = discord.File(io.BytesIO(upload.data), filename=upload.name)
+            if not plain:
+                kwargs["embed"] = announcement_embed(
+                    text=text,
+                    heading=heading,
+                    # A non-image attachment has nothing to show inside the
+                    # embed, so it rides along as a plain file instead.
+                    image_filename=upload.name if upload and upload.is_image else "",
+                )
+
+            try:
+                await channel.send(**kwargs)
+            except discord.DiscordException as exc:
+                log.warning("guild %s: manual send failed — %s", guild_id, exc)
+                failed.append(guild_id)
+                continue
+            sent += 1
+        return sent, failed
+
     async def edit_all(self, key: str, known, embed: discord.Embed) -> None:
         for guild_id, channel_id, message_id in known:
             channel = self.get_channel(int(channel_id))
@@ -188,17 +275,27 @@ class AlertBot(discord.Client):
                 log.warning("guild %s: edit failed — %s", guild_id, exc)
 
     async def broadcast_followup(self, known, line: str) -> None:
-        """Reply to each original setup, because an edit alone is silent."""
+        """Reply to each original setup, pinging the subscribed role.
+
+        An edit alone is silent, and a reply on its own only notifies whoever
+        is already watching the thread — but a filled entry or a moved stop is
+        news for everyone the opening alert pinged, so the role rides along
+        here too.
+        """
+        subscriptions = await self.store.subscriptions()
         for guild_id, channel_id, message_id in known:
             channel = self.get_channel(int(channel_id))
             if channel is None:
                 continue
+            role = subscriptions.get(guild_id, {}).get("role")
             try:
                 original = await channel.fetch_message(int(message_id))
                 await original.reply(
-                    line,
+                    f"<@&{role}> {line}" if role else line,
                     mention_author=False,
-                    allowed_mentions=discord.AllowedMentions.none(),
+                    allowed_mentions=discord.AllowedMentions(
+                        everyone=False, users=False, roles=bool(role)
+                    ),
                 )
             except discord.DiscordException as exc:
                 log.warning("guild %s: follow-up failed — %s", guild_id, exc)
@@ -303,6 +400,78 @@ def register_commands(bot: AlertBot) -> None:
             ]
         await interaction.followup.send("\n".join(lines), ephemeral=True)
 
+    @bot.tree.command(
+        name="announce", description="Post your own message or chart to every server"
+    )
+    @app_commands.describe(
+        message="What to say. Type \\n for a line break.",
+        image="A chart, PnL card or screenshot to post",
+        heading="Optional title above the message",
+        mention="Ping the subscribed role (off by default)",
+        plain="Post as a plain message instead of the branded embed",
+        preview="Show it to you only, without sending it anywhere",
+    )
+    @is_owner()
+    async def announce(
+        interaction: discord.Interaction,
+        message: Optional[app_commands.Range[str, 1, 3500]] = None,
+        image: Optional[discord.Attachment] = None,
+        heading: Optional[app_commands.Range[str, 1, 200]] = None,
+        mention: bool = False,
+        plain: bool = False,
+        preview: bool = False,
+    ):
+        await interaction.response.defer(ephemeral=True)
+        if not message and not image:
+            await interaction.followup.send(
+                "Give me a `message`, an `image`, or both.", ephemeral=True)
+            return
+
+        # A slash-command box cannot hold a real newline, so the escape that
+        # can be typed into one is honoured here.
+        text = (message or "").replace("\\n", "\n")
+        upload = None
+        if image:
+            try:
+                upload = await load_upload(image)
+            except discord.DiscordException as exc:
+                await interaction.followup.send(
+                    f"❌ Couldn't read that attachment — {exc}", ephemeral=True)
+                return
+
+        if preview:
+            # Rendered exactly as the servers will see it, minus the ping, so a
+            # chart can be checked before it is broadcast.
+            kwargs: dict = {"ephemeral": True}
+            if upload:
+                kwargs["file"] = discord.File(io.BytesIO(upload.data), filename=upload.name)
+            if plain:
+                kwargs["content"] = "\n".join(
+                    part for part in (f"**{heading}**" if heading else "", text) if part
+                ) or "(image only)"
+            else:
+                kwargs["embed"] = announcement_embed(
+                    text=text,
+                    heading=heading or "",
+                    image_filename=upload.name if upload and upload.is_image else "",
+                )
+            await interaction.followup.send(**kwargs)
+            return
+
+        sent, failed = await bot.broadcast_manual(
+            text=text,
+            heading=heading or "",
+            upload=upload,
+            mention=mention,
+            plain=plain,
+        )
+        note = f"Posted to {sent} server{'' if sent == 1 else 's'}."
+        if failed:
+            note += f" {len(failed)} couldn't be reached: {', '.join(failed)}"
+        if not sent and not failed:
+            note = "Nowhere to post — no server has subscribed a channel yet."
+        await interaction.followup.send(note, ephemeral=True)
+
     @bot.tree.command(name="preview", description="Post a sample alert here")
     @is_owner()
     async def preview(interaction: discord.Interaction):
@@ -319,7 +488,7 @@ def register_commands(bot: AlertBot) -> None:
         url = discord.utils.oauth_url(
             bot.user.id,
             permissions=discord.Permissions(
-                send_messages=True, embed_links=True,
+                send_messages=True, embed_links=True, attach_files=True,
                 read_message_history=True, view_channel=True,
             ),
             scopes=("bot", "applications.commands"),

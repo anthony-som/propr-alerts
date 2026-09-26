@@ -66,8 +66,9 @@ rather say nothing at all about how it went.
    `OWNER_IDS` (your Discord user ID — enable Developer Mode, right-click
    yourself → Copy User ID) and the copier's `COPIER_USER` / `COPIER_PASSWORD`.
 3. **Run**: `docker compose up -d --build`
-4. **Invite it** to a server with *Send Messages*, *Embed Links* and
-   *Read Message History*, then run `/subscribe #channel` there.
+4. **Invite it** to a server with *Send Messages*, *Embed Links*,
+   *Attach Files* (for `/announce` images) and *Read Message History*,
+   then run `/subscribe #channel` there.
 
 ## Commands
 
@@ -82,9 +83,32 @@ that setting if nobody else should be able to run them.
 | `/admin_unsubscribe <guild_id>` | Remove a server by ID |
 | `/servers` | List every subscribed server |
 | `/status` | Copier reachability, last read, live setups |
+| `/announce <message> [image] [heading] [mention] [plain] [preview]` | Post your own message or chart to every subscribed channel |
 | `/preview` | Post a sample alert, only you can see it |
 | `/invite` | Invite link with the right permissions |
 | `/ping` | Latency |
+
+### Posting something yourself
+
+`/announce` is the one way anything reaches a channel that the tracker did not
+write. Use it for a monthly PnL card, an equity curve, or a note:
+
+- `message` is the text — type `\n` where you want a line break, since a
+  slash-command box cannot hold a real one.
+- `image` attaches a chart or screenshot. An image is shown inside the embed;
+  anything else (a PDF, say) rides along as a plain file.
+- `preview: true` renders it back to you and sends it nowhere, so a chart can
+  be checked before it goes out.
+- `mention: true` pings the subscribed role. Off by default, and an
+  `@everyone` typed into the message is never allowed through.
+- `plain: true` drops the embed and posts the text as-is.
+
+It fans out to every subscribed server, like an alert, but nothing is
+remembered afterwards — there is no setup for it to belong to, so it is never
+edited or replied to later. **The no-money rule does not apply here**: an alert
+renders a `Setup`, which has no figures in it to leak, while an announcement
+carries whatever you typed or drew. That is the point of it, and the reason it
+is a separate command rather than a flag on an alert.
 
 ## Behaviour worth knowing
 

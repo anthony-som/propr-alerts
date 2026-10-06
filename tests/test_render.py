@@ -6,7 +6,7 @@ numbers. Any of them surfacing is the bug this file exists to catch.
 """
 from propr_alerts.render import (
     FOOTER_TEXT, PROMO_LINES, announcement_embed, attachment_name, build_embed,
-    risk_pct, update_line,
+    reward_risk, update_line,
 )
 from propr_alerts.tracker import (
     ADDED, CANCELLED, CLOSED, FILLED, LEVELS, OPENED, TRIMMED, Setup, Tracker,
@@ -90,14 +90,13 @@ def test_socials_and_referrals_are_clickable_description_links():
 def test_the_body_carries_entry_stop_target_then_status():
     setup = Setup(
         key="BTC:short", asset="BTC", side="short", state="working",
-        entry_type="limit", entry_price="64250.5", stop="65100", target="61800",
-        risk_pct="1",
+        entry_type="limit", entry_price="64250", stop="65100", target="61800",
     )
     lines = build_embed(setup, OPENED).description.splitlines()
-    assert lines[0] == "**Entry** 64,250.5 (limit)"
+    assert lines[0] == "**Entry** 64,250 (limit)"
     assert lines[1] == "**Stop** 65,100"
     assert lines[2] == "**Target** 61,800"
-    assert lines[3] == "**Risk** 1%"
+    assert lines[3] == "**RR** 1:2.88"
     assert lines[5] == "⏳ Working"
 
 
@@ -156,10 +155,33 @@ def test_a_moved_entry_is_in_the_update_line():
     assert update_line(setup, LEVELS, ["entry"]) == "✏️ Entry → 64,000"
 
 
-# ---------------------------------------------------------------- risk
-def test_risk_is_the_copiers_follower_percentage():
-    setup = Setup(key="k", asset="BTC", side="long", risk_pct="1.00")
-    assert risk_pct(setup) == "1%"
+# ------------------------------------------------------------------ rr
+def test_rr_is_target_distance_over_stop_distance():
+    long = Setup(key="k", asset="BTC", side="long",
+                 entry_price="100", stop="90", target="125")
+    assert reward_risk(long) == "1:2.5"
+    short = Setup(key="k", asset="BTC", side="short",
+                  entry_price="100", stop="110", target="80")
+    assert reward_risk(short) == "1:2"
+
+
+def test_rr_measures_from_the_fill_once_there_is_one():
+    setup = Setup(key="k", asset="BTC", side="long",
+                  entry_price="100", fill_price="95", stop="90", target="125")
+    assert reward_risk(setup) == "1:6"
+
+
+def test_rr_is_blank_until_every_level_is_known():
+    for missing in ("entry_price", "stop", "target"):
+        levels = {"entry_price": "100", "stop": "90", "target": "125", missing: None}
+        assert reward_risk(Setup(key="k", asset="BTC", side="long", **levels)) == "—"
+
+
+def test_rr_is_blank_once_the_stop_is_at_or_past_the_entry():
+    for stop in ("100", "105"):
+        setup = Setup(key="k", asset="BTC", side="long",
+                      entry_price="100", stop=stop, target="125")
+        assert reward_risk(setup) == "—"
 
 
 def test_a_trim_reports_a_share_and_never_the_size():

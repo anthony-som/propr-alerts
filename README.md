@@ -4,10 +4,9 @@ A Discord bot that announces **your Hyperliquid trades** — ticker, direction,
 entry, stop and target — and keeps each alert up to date as the setup fills,
 cancels or closes.
 
-**No sizes, ever.** No quantity, no notional, no balance, no PnL figure. The
-only figures an alert keeps are *shares*: the configured public risk percentage
-(the copier's follower side of the risk remap) and how much of a position has
-been taken off. `tests/test_render.py` pushes a book full of sizes through the
+**No sizes, ever.** No quantity, no notional, no balance, no PnL figure. Beyond
+the price levels, the only figures an alert keeps are ratios: the reward-to-risk
+of the levels, and how much of a position has been taken off as a share. `tests/test_render.py` pushes a book full of sizes through the
 whole pipeline and fails if any of them reach the output.
 
 ## How it gets your trades
@@ -27,21 +26,22 @@ cannot place, cancel or modify anything.
 Set `MEXC_API_KEY` / `MEXC_API_SECRET` (a futures key with **read-only**
 permission) and a second feed polls your MEXC futures account directly, since
 the copier has no MEXC adapter. Its alerts go to the same channels, titled
-`LONG BTC · MEXC`, and use `MEXC_RISK_PCT` for the risk line. Limit/market
+`LONG BTC · MEXC`. Limit/market
 entries, TP/SL on orders or positions, and trigger (plan) orders are all read.
 
 ## What gets posted
 
 One embed per idea, edited in place as it progresses, with a short follow-up
-line on each transition so an edit is never missed. The title is the direction
-and ticker; the body is the levels:
+line on each transition so an edit is never missed. Each follow-up replaces the
+previous one, so a trade leaves at most one update under its alert rather than
+a stack of them. The title is the direction and ticker; the body is the levels:
 
 ```
 LONG BTC
 **Entry** 64,250.5 (limit)
 **Stop** 63,100
 **Target** 66,800
-**Risk** 1%
+**RR** 1:2.22
 
 ⏳ Working
 
@@ -61,6 +61,10 @@ Follow @qikoCrypto on X • Affiliated with Nefarious.Trading
 | More is added to the position | the same message + `➕ Added · avg entry 63,800` |
 | Entry cancelled unfilled | *Cancelled* + `🚫 Cancelled BTC LONG` |
 | Position closes | *Closed* + `🏁 BTC LONG closed in profit` |
+
+**RR** is the distance to the target over the distance to the stop, measured
+from the fill once there is one. It stays `—` until entry, stop and target are
+all known, and goes back to `—` once the stop is at or past the entry.
 
 `SHOW_OUTCOME=false` drops the "in profit" / "at a loss" wording if you would
 rather say nothing at all about how it went.

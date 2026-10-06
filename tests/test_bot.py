@@ -8,12 +8,21 @@ from propr_alerts.bot import AlertBot, Upload, register_commands
 from propr_alerts.config import Config
 
 
+class Reply:
+    def __init__(self):
+        self.deleted = False
+
+    async def delete(self):
+        self.deleted = True
+
+
 class OriginalMessage:
     def __init__(self):
         self.replies = []
 
     async def reply(self, content, **kwargs):
         self.replies.append((content, kwargs))
+        return Reply()
 
 
 class Channel:
@@ -33,6 +42,7 @@ class FollowupBot:
             subscriptions=self._subscriptions,
         )
         self.role = role
+        self.last_followup = {}
 
     async def _subscriptions(self):
         return {"guild": {"channel": "22", "role": self.role}}
@@ -47,7 +57,7 @@ async def test_trade_management_replies_to_the_original_alert():
     channel = Channel(original)
 
     await AlertBot.broadcast_followup(
-        FollowupBot(channel), [("guild", "22", "33")], "✏️ Stop → 63,500"
+        FollowupBot(channel), "BTC:long@t", [("guild", "22", "33")], "✏️ Stop → 63,500"
     )
 
     assert channel.fetched == [33]
@@ -65,12 +75,27 @@ async def test_follow_ups_without_a_role_stay_unmentioned():
     channel = Channel(original)
 
     await AlertBot.broadcast_followup(
-        FollowupBot(channel, role=None), [("guild", "22", "33")], "✅ Filled"
+        FollowupBot(channel, role=None), "BTC:long@t", [("guild", "22", "33")], "✅ Filled"
     )
 
     content, kwargs = original.replies[0]
     assert content == "✅ Filled"
     assert kwargs["allowed_mentions"].roles is False
+
+
+async def test_a_new_follow_up_replaces_the_last_one():
+    bot = FollowupBot(Channel(OriginalMessage()))
+    known = [("guild", "22", "33")]
+
+    await AlertBot.broadcast_followup(bot, "BTC:long@t", known, "✅ Filled")
+    first = bot.last_followup["BTC:long@t"]["guild"]
+    await AlertBot.broadcast_followup(bot, "BTC:long@t", known, "✂️ Trimmed 50%")
+    second = bot.last_followup["BTC:long@t"]["guild"]
+
+    # One update per trade stays in the channel: the embed already shows
+    # where it stands, so the older line has nothing left to say.
+    assert first.deleted is True
+    assert second is not first and second.deleted is False
 
 
 async def test_every_command_is_owner_only(tmp_path):

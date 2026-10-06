@@ -104,9 +104,22 @@ def status_label(setup: Setup) -> str:
     return label
 
 
-def risk_pct(setup: Setup) -> str:
-    """Configured account risk after the leader-to-follower remap."""
-    return _pct(setup.risk_pct)
+def reward_risk(setup: Setup) -> str:
+    """`1:2.5` — target distance over stop distance, measured from the entry.
+
+    Uses the fill once there is one. Blank until entry, stop and target are all
+    known, and blank once the stop sits at or past the entry: with no risk left
+    there is nothing to divide by.
+    """
+    entry = _decimal(setup.fill_price or setup.entry_price)
+    stop, target = _decimal(setup.stop), _decimal(setup.target)
+    if entry is None or stop is None or target is None:
+        return "—"
+    sign = 1 if setup.side == "long" else -1
+    risk, reward = sign * (entry - stop), sign * (target - entry)
+    if risk <= 0 or reward <= 0:
+        return "—"
+    return f"1:{(reward / risk).quantize(Decimal('0.01')).normalize():f}"
 
 
 def body(setup: Setup) -> str:
@@ -119,7 +132,7 @@ def body(setup: Setup) -> str:
         f"**Entry** {entry_label(setup)}",
         f"**Stop** {_price(setup.stop)}",
         f"**Target** {_price(setup.target)}",
-        f"**Risk** {risk_pct(setup)}",
+        f"**RR** {reward_risk(setup)}",
         "",
         status_label(setup),
         "",

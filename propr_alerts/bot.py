@@ -13,7 +13,7 @@ import asyncio
 import io
 import logging
 from dataclasses import dataclass
-from typing import List, NamedTuple, Optional, Tuple, Union
+from typing import Dict, List, NamedTuple, Optional, Tuple, Union
 
 import discord
 from discord import app_commands
@@ -100,6 +100,10 @@ class AlertBot(discord.Client):
                 Tracker(show_outcome=config.show_outcome, venue="MEXC"),
             ))
         self.alerts_sent = 0
+        # alert key → guild → the latest follow-up reply, deleted by the next.
+        # ponytail: in memory, so a restart mid-trade leaves one old reply up;
+        # keep it in the store's kv table if that ever matters.
+        self.last_followup: Dict[str, Dict[str, discord.Message]] = {}
 
     # ------------------------------------------------------------ lifecycle
     async def setup_hook(self) -> None:
@@ -201,11 +205,12 @@ class AlertBot(discord.Client):
             # needs to see.
             if kind in (FILLED, CANCELLED, CLOSED, LEVELS, TRIMMED, ADDED):
                 await self.broadcast_followup(
-                    known, update_line(setup, kind, alert.changed, alert.pct)
+                    key, known, update_line(setup, kind, alert.changed, alert.pct)
                 )
 
         if kind in TERMINAL:
             await self.store.forget_messages(key)
+            self.last_followup.pop(key, None)
         self.alerts_sent += 1
 
     async def broadcast_new(self, key: str, embed: discord.Embed, mention: bool) -> None:
@@ -299,15 +304,20 @@ class AlertBot(discord.Client):
             except discord.DiscordException as exc:
                 log.warning("guild %s: edit failed — %s", guild_id, exc)
 
-    async def broadcast_followup(self, known, line: str) -> None:
+    async def broadcast_followup(self, key: str, known, line: str) -> None:
         """Reply to each original setup, pinging the subscribed role.
 
         An edit alone is silent, and a reply on its own only notifies whoever
         is already watching the thread — but a filled entry or a moved stop is
         news for everyone the opening alert pinged, so the role rides along
         here too.
+
+        Each reply replaces the setup's previous one, so a busy trade leaves
+        one update in the channel rather than a stack of them. Nothing is lost:
+        the embed has already been edited to where the trade stands now.
         """
         subscriptions = await self.store.subscriptions()
+        replies = self.last_followup.setdefault(key, {})
         for guild_id, channel_id, message_id in known:
             channel = self.get_channel(int(channel_id))
             if channel is None:
@@ -315,7 +325,7 @@ class AlertBot(discord.Client):
             role = subscriptions.get(guild_id, {}).get("role")
             try:
                 original = await channel.fetch_message(int(message_id))
-                await original.reply(
+                sent = await original.reply(
                     f"<@&{role}> {line}" if role else line,
                     mention_author=False,
                     allowed_mentions=discord.AllowedMentions(
@@ -323,7 +333,16 @@ class AlertBot(discord.Client):
                     ),
                 )
             except discord.DiscordException as exc:
+                # The old reply stays up, and tracked, rather than leave the
+                # setup with no update under it at all.
                 log.warning("guild %s: follow-up failed — %s", guild_id, exc)
+                continue
+            stale, replies[guild_id] = replies.get(guild_id), sent
+            if stale:
+                try:
+                    await stale.delete()
+                except discord.DiscordException as exc:
+                    log.warning("guild %s: removing old follow-up failed — %s", guild_id, exc)
 
 
 # --------------------------------------------------------------- commands
